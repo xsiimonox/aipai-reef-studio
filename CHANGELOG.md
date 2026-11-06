@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.17.3] - 2026-11-07
+
+### Added
+
+- Reef Studio zeigt einen Hinweis an, sobald eine neuere veröffentlichte GitHub-Version verfügbar ist. Die Abfrage erfolgt maximal alle sechs Stunden im Hintergrund und beeinflusst die lokale Lampensteuerung nicht.
+
 ## [0.17.2] - 2026-11-07
 
 ### Added

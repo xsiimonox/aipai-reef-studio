@@ -350,6 +350,9 @@ async def studio_command(hass, connection, msg) -> None:
     from .groups import async_get_groups
 
     groups = await async_get_groups(hass)
+    from .updates import get_update_status
+
+    update_status = get_update_status(hass)
     try:
         action = msg["action"]
         if action == "group_save":
@@ -375,5 +378,6 @@ async def studio_command(hass, connection, msg) -> None:
         msg["id"], {
             "lights": [studio.snapshot() for studio in studios.values()],
             "groups": groups.snapshot(studios),
+            "update": update_status,
         },
     )

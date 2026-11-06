@@ -36,6 +36,7 @@ const STYLE = `
   :focus-visible{outline:2px solid #a5fff2;outline-offset:2px}
   select{max-width:100%} .pill{border-radius:30px;padding:4px 10px;background:#203955;color:#b9e3ff;font-size:.82rem}
   .notice{color:#ffd2a0;margin:8px 0;min-height:1.35em}.notice:empty{margin:0;min-height:0}
+  .update-note{margin:0 0 15px;padding:11px 14px;border:1px solid #76e8e0;border-radius:12px;background:#123d47;color:#dcfffb}
   .legend{font-size:.78rem;margin-top:5px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:5px}
   svg{width:100%;display:block;overflow:visible}.timeline{margin-top:6px}
   .scrub{display:flex;align-items:center;gap:10px;margin-top:4px}.scrub input{width:100%}
@@ -144,6 +145,7 @@ class ReefStudioPanel extends HTMLElement {
       JSON.stringify(payload.groups) !== JSON.stringify(this.groups);
     this.lights = [...payload.lights, ...payload.groups];
     this.groups = payload.groups;
+    this.updateInfo = payload.update;
     if (!this.light) {
       // The WebSocket command returns an object (`{lights, groups}`), rather
       // than the legacy bare array.  Select the first actual lamp from that
@@ -210,6 +212,7 @@ class ReefStudioPanel extends HTMLElement {
         ${light ? `<select id="lamp" aria-label="Lampe">${this.lights.map(item =>
         `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}</option>`).join("")}</select>` : ""}
       </header><div id="notice" class="notice" role="status"></div>
+      ${this.updateInfo?.available ? `<div class="update-note" role="status">Update verfügbar: <strong>v${escape(this.updateInfo.latest)}</strong> (installiert: v${escape(this.updateInfo.current)}). Bitte über HACS aktualisieren.</div>` : ""}
       ${light ? `<div class="grid"><section class="panel">
         <div class="row spread"><h2 id="curve-title">Tagesverlauf</h2><span id="now" class="pill"></span></div>
         <div id="chart" class="timeline"></div>
