@@ -6,6 +6,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Added
 
+- Home-Assistant-Klassifizierung für Beleuchtungssysteme und Aquarien.
 - Reef Studio als native Home-Assistant-Oberfläche für Programme, Szenen und die Live-Tagesansicht.
 - Lineare und sinusförmige Rampen für jeden Übergang eines Tagesprogramms.
 - Lampengruppen mit synchronisiertem Start gleich benannter Programme und Szenen.
