@@ -122,7 +122,9 @@ class ReefStudioPanel extends HTMLElement {
   }
 
   reset() {
-    this.id = null;
+    // Do not use `this.id`: HTMLElement already owns that DOM property and
+    // coerces null to the literal string "null".
+    this.itemId = null;
     this.draft = null;
     this.point = 0;
     this.preview = null;
@@ -291,8 +293,8 @@ class ReefStudioPanel extends HTMLElement {
         "Speichere beliebige Looks wie Blaulicht, Foto oder Notlicht. Nach Ablauf kehrt die Lampe zum vorherigen Programm oder Modus zurück."}</p>
       <div class="actions">${Object.keys(library).length ? `
         <select id="library" aria-label="Gespeicherter Eintrag"><option value="">Eintrag auswählen</option>
-        ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.id ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
-        ${this.id ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
+        ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
+        ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
         ${programs ? "" : `<label class="field">Dauer in Minuten<input id="duration" type="number" min="1" max="180" value="${this.duration}"></label>`}
         ${isGroup ? "" : `<button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>`}` : ""}
       </div><div id="draft"></div>`;
@@ -309,9 +311,9 @@ class ReefStudioPanel extends HTMLElement {
     const select = node.querySelector("#library");
     if (select) select.onchange = () => {
       this.reset();
-      this.id = select.value || null;
-      if (this.id) {
-        this.draft = structuredClone(library[this.id]);
+      this.itemId = select.value || null;
+      if (this.itemId) {
+        this.draft = structuredClone(library[this.itemId]);
         const fit = levels => light.labels.map((_, i) => levels[i] ?? 0);
         if (programs) this.draft.points.forEach(point => { point.levels = fit(point.levels); });
         else this.draft.levels = fit(this.draft.levels);
@@ -319,23 +321,23 @@ class ReefStudioPanel extends HTMLElement {
       this.editor();
       this.update();
     };
-    if (this.id) {
+    if (this.itemId) {
       node.querySelector("#activate").onclick = () => {
         const duration = node.querySelector("#duration");
         if (duration && !duration.reportValidity()) return;
-        this.send("activate", { item_id: this.id, ...(duration ? { duration: this.duration } : {}) });
+        this.send("activate", { item_id: this.itemId, ...(duration ? { duration: this.duration } : {}) });
       };
       const duration = node.querySelector("#duration");
       if (duration) duration.oninput = () => { this.duration = Number(duration.value); };
       const copy = node.querySelector("#copy");
       if (copy) copy.onclick = () => {
         this.draft.name = (this.draft.name + " (Kopie)").slice(0, 64);
-        this.id = null;
+        this.itemId = null;
         this.editor();
       };
       const remove = node.querySelector("#delete");
       if (remove) remove.onclick = () => {
-        if (window.confirm(`„${library[this.id].name}“ aus der Bibliothek löschen?`)) this.send("delete", { item_id: this.id });
+        if (window.confirm(`„${library[this.itemId].name}“ aus der Bibliothek löschen?`)) this.send("delete", { item_id: this.itemId });
       };
     }
     if (this.draft) this.renderDraft(programs);
@@ -383,7 +385,7 @@ class ReefStudioPanel extends HTMLElement {
     });
     node.querySelector("#save").onclick = () => {
       if (!node.querySelector("#name").reportValidity()) return;
-      this.send("save", { ...(this.id ? { item_id: this.id } : {}), item });
+      this.send("save", { ...(this.itemId ? { item_id: this.itemId } : {}), item });
     };
     if (!programs) return;
     const showPoint = () => { this.preview = item.points[this.point].minute; this.renderDraft(true); this.update(); };
