@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.17.2] - 2026-11-07
+
+### Added
+
+- Szenenbibliothek mit einer sichtbaren Schnellwechsel-Leiste: Jede gespeicherte Szene kann mit einem Klick für 15 Minuten gestartet werden. Die aktive Szene ist hervorgehoben; über die Auswahl bleibt sie unabhängig bearbeitbar.
+
+### Fixed
+
+- Die native Reef-Studio-Panel-Datei erhält eine neue Cache-Version, damit Home Assistant nach dem Update zuverlässig die aktuelle Szenenbibliothek lädt.
+
 ## [0.17.1] - 2026-11-07
 
 ### Fixed

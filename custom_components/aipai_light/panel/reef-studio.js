@@ -345,7 +345,9 @@ class ReefStudioPanel extends HTMLElement {
         ${programs ? "" : `<label class="field">Dauer in Minuten (max. 60)<input id="duration" type="number" min="1" max="60" value="${this.duration}"></label>
         ${isGroup ? "" : `<button id="manual" data-live>Manueller Modus · 60 Min.</button>`}`}
         ${isGroup ? "" : `<button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>`}` : ""}
-      </div><div id="draft"></div>`;
+      </div>${!programs && Object.keys(library).length ? `<div class="actions"><small>Schnell wechseln:</small>
+        ${Object.entries(library).map(([id, item]) => `<button data-start-scene="${escape(id)}" class="${light.scene?.id === id ? "primary" : ""}">${escape(item.name)}</button>`).join("")}
+      </div>` : ""}<div id="draft"></div>`;
     const newButton = node.querySelector("#new");
     if (newButton) newButton.onclick = () => {
       this.reset();
@@ -369,6 +371,9 @@ class ReefStudioPanel extends HTMLElement {
       this.editor();
       this.update();
     };
+    node.querySelectorAll("[data-start-scene]").forEach(button => {
+      button.onclick = () => this.send("activate", { item_id: button.dataset.startScene, duration: 15 });
+    });
     if (this.itemId) {
       node.querySelector("#activate").onclick = () => {
         const duration = node.querySelector("#duration");

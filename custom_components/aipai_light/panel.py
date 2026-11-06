@@ -48,7 +48,7 @@ async def async_register_studio_panel(hass: HomeAssistant) -> None:
         return
     await register(
         hass, "reef-studio", "aipai-reef-studio", sidebar_title="Reef Studio",
-        sidebar_icon="mdi:chart-bell-curve", module_url=f"{url}?v=2",
+        sidebar_icon="mdi:chart-bell-curve", module_url=f"{url}?v=3",
         require_admin=True, embed_iframe=False,
     )
     hass.data[_STUDIO_REGISTERED_KEY] = True
