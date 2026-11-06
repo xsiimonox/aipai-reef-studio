@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  local-validation:
+    name: Local validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate release metadata
+        run: python tools/validate_release.py
+      - name: Compile Python integration
+        run: python -m compileall -q custom_components/aipai_light tools
+      - name: Validate Reef Studio JavaScript
+        run: node --check custom_components/aipai_light/panel/reef-studio.js
+
+  hassfest:
+    name: Home Assistant manifest (hassfest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    # This repo is public, so HACS can read file contents — blocking on purpose.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands

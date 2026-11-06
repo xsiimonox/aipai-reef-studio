@@ -1,0 +1,20 @@
+{
+  "domain": "aipai_light",
+  "name": "AIPAI Reef Studio",
+  "codeowners": [
+    "@xsiimonox"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "frontend",
+    "network"
+  ],
+  "documentation": "https://github.com/xsiimonox/aipai-reef-studio",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/xsiimonox/aipai-reef-studio/issues",
+  "requirements": [
+    "paho-mqtt>=1.6.1"
+  ],
+  "version": "0.16.0"
+}

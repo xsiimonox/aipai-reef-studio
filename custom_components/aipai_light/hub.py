@@ -1,0 +1,1174 @@
+"""Per-light state hub: owns the MQTT connection and shared entity state."""
+from __future__ import annotations
+
+import logging
+import time
+from datetime import datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.event import (
+    async_track_point_in_time,
+    async_track_time_change,
+    async_track_time_interval,
+)
+from homeassistant.util import dt as dt_util
+
+from .const import DEFAULT_LABELS, DOMAIN, resolve_channel_profile
+from .mqtt_client import AipaiMqttClient
+from .protocol import LightState, build_saveconfig, cmd_to_pct, parse_readconfig, pct_to_cmd
+
+_LOGGER = logging.getLogger(__name__)
+
+POLL_INTERVAL = 45              # default seconds between readconfig polls
+CLOCK_CHECK_INTERVAL = 3600    # check the UTC offset this often (catches DST fast)
+CLOCK_RESYNC_INTERVAL = 6 * 3600  # force a clock re-sync at least this often (drift)
+
+
+class AipaiLightHub:
+    """Holds live state for one AIPAI light and fans out updates to entities."""
+
+    def __init__(
+        self, hass: HomeAssistant, serial: str, model_hint: str | None = None,
+        poll_interval: int = POLL_INTERVAL, name: str | None = None,
+        local_ip: str | None = None, dropout_debounce: int = 120,
+        channel_profile: str = "auto",
+        timezone_name: str = "Europe/Berlin",
+    ) -> None:
+        self.hass = hass
+        self.serial = serial
+        self._model_hint = model_hint or ""
+        self._channel_profile = channel_profile
+        self.timezone = ZoneInfo(timezone_name)
+        initial_roads, initial_labels = resolve_channel_profile(
+            channel_profile, self._model_hint, 8
+        )
+        # Friendly device name (from the config flow). The user can still rename
+        # the device in the HA UI afterwards - that override wins in the registry.
+        self.name = (name or "").strip() or f"AIPAI Light {serial}"
+        self._poll_interval = max(10, int(poll_interval))
+        self._connected = False
+        self._last_reply = 0.0  # monotonic time of the last device reply
+        self.last_seen = None            # wall-clock (UTC) of the last device reply
+        self._was_available: bool | None = None  # for dropout edge detection
+        self._dropout_active = False     # a dropout notification is outstanding
+        # Reliability tracking + alert debounce (don't cry wolf on a brief blip).
+        from .dropout_tracker import DropoutTracker
+
+        self.dropouts = DropoutTracker()
+        self._dropout_debounce = max(0, int(dropout_debounce))  # seconds
+        self._dropout_timer = None       # pending debounced-announce handle
+        self._poll_unsub = None
+        self._clock_unsub = None
+        self._last_offset: float | None = None   # UTC offset at the last clock sync
+        self._last_clock_sync = 0.0              # monotonic time of the last sync
+        self._resync_on_state = False            # re-sync clock on next state after a reconnect
+        self.last_ack: dict[str, Any] | None = None  # last saveconfig/clock/moon ack
+
+        # Best-effort defaults until the first readconfig arrives.
+        self.state = LightState(
+            roads=initial_roads, roads_real=8, labels=initial_labels or list(DEFAULT_LABELS),
+            road_val_pct=[0] * 8, road_data=[",".join(["0"] * 24)] * 8,
+            model=model_hint,
+        )
+        self.has_state = False
+        self.moon: dict[str, Any] = {}
+        # Live channel values in command scale (0..1023), indexed by channel.
+        self.channels: list[int] = [0] * self.state.roads
+        # Remembered non-zero levels so the master switch can restore them.
+        self._restore: list[int] = [pct_to_cmd(50)] * self.state.roads
+
+        self._entities: list[Any] = []
+        # Schedule layers: the daytime curves (from the editor) and the night
+        # light config, kept apart so every save rebuilds device = day + night.
+        self.day_curves: list[list[int]] | None = None
+        self.night_config: dict[str, Any] | None = None
+        self._night_store = None
+        # Acclimation ramp: {"started": iso-date, "start_pct": int, "weeks": int}
+        # or None. Scales the whole composed schedule, climbing to 100% daily.
+        self.acclim: dict[str, Any] | None = None
+        self._acclim_unsub = None
+        self._storm_active = False        # a lightning storm effect is running
+        # Timed lights-off state.
+        self._off_store = None
+        self._off_unsub = None
+        self._off_prev: tuple[str, list[int]] | None = None
+        self.off_until = None
+        # Night-feeding override state (manual, red-only; schedule resumes on off).
+        self._nf_store = None
+        self._nf_active = False
+        self._nf_prev: tuple[str, list[int]] | None = None
+        # Transport: local HTTP (cloud-free) when an IP is supplied, else the
+        # vendor cloud broker. Both feed the same on_message/on_connection_change.
+        self.local = bool(local_ip)
+        if local_ip:
+            from .local_client import AipaiLocalClient
+
+            self.client = AipaiLocalClient(
+                hass, serial, local_ip,
+                on_message=self._handle_message,
+                on_connection_change=self._handle_connection_change,
+                on_ip_changed=self._persist_ip,
+            )
+        else:
+            self.client = AipaiMqttClient(
+                serial,
+                on_message=self._handle_message,
+                on_connection_change=self._handle_connection_change,
+            )
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def register_entity(self, entity: Any) -> None:
+        self._entities.append(entity)
+
+    async def async_connect(self) -> None:
+        await self.hass.async_add_executor_job(self.client.connect)
+        self._poll_unsub = async_track_time_interval(
+            self.hass, self._async_poll, timedelta(seconds=self._poll_interval)
+        )
+        self._clock_unsub = async_track_time_interval(
+            self.hass, self._async_clock_tick, timedelta(seconds=CLOCK_CHECK_INTERVAL)
+        )
+
+    async def async_disconnect(self) -> None:
+        for unsub in (self._poll_unsub, self._clock_unsub, self._off_unsub):
+            if unsub:
+                unsub()
+        self._poll_unsub = self._clock_unsub = self._off_unsub = None
+        self._cancel_dropout_timer()
+        self._cancel_acclim_timer()
+        await self.hass.async_add_executor_job(self.client.disconnect)
+
+    async def _async_clock_tick(self, _now) -> None:  # noqa: ANN001
+        """Hourly: re-sync if the UTC offset changed (DST) or a full re-sync is due.
+
+        Catching an offset change means a DST changeover (or the half-hour Adelaide
+        transition) is corrected within the hour instead of waiting up to 6h - and
+        we only send an extra command on the day it actually changes.
+        """
+        if not self._connected:
+            return
+        from .schedule import clock_needs_resync
+
+        offset = self._current_offset()
+        elapsed = time.monotonic() - self._last_clock_sync
+        if clock_needs_resync(offset, self._last_offset, elapsed, CLOCK_RESYNC_INTERVAL):
+            _LOGGER.debug(
+                "clock sync for %s (offset now=%s, was=%s, elapsed=%ds)",
+                self.serial, offset, self._last_offset, int(elapsed),
+            )
+            self.auto_sync_clock()
+
+    def _now(self):  # noqa: ANN201
+        return datetime.now(self.timezone)
+
+    def _current_offset(self) -> float | None:
+        off = self._now().utcoffset()
+        return off.total_seconds() if off is not None else None
+
+    def _compensated_epoch(self) -> int:
+        """Epoch that makes the device show HA's local time.
+
+        Compensates for the device storing only a WHOLE-HOUR timezone, so
+        half-hour zones (e.g. Adelaide UTC+9:30) and DST come out right. Falls
+        back to raw UTC only before the first state read (device tz unknown).
+        """
+        from .schedule import clock_epoch
+
+        now = time.time()
+        if self.has_state:
+            ha_offset = self._now().utcoffset()
+            if ha_offset is not None:
+                return clock_epoch(
+                    now, ha_offset.total_seconds(), _safe_int(self.state.timezone)
+                )
+        return int(now)
+
+    def auto_sync_clock(self) -> None:
+        """Keep the device clock right automatically (no vendor-app popup needed)."""
+        self.client.sync_clock(self._compensated_epoch())
+        # Remember the offset/time we just synced for, so the hourly tick can tell
+        # when DST (or the half-hour Adelaide flip) has changed it.
+        self._last_offset = self._current_offset()
+        self._last_clock_sync = time.monotonic()
+
+    def request_refresh(self) -> None:
+        self.client.request_state()
+
+    async def _async_poll(self, _now) -> None:  # noqa: ANN001
+        if self.local or self._connected:
+            self.request_refresh()
+        self._notify()  # re-evaluate availability even if the reply never comes
+
+    # -- derived views for entities ---------------------------------------
+
+    @property
+    def available(self) -> bool:
+        """True only while the broker is connected AND the device is replying."""
+        grace = self._poll_interval * 3 + 15
+        return self._connected and (time.monotonic() - self._last_reply) < grace
+
+    @property
+    def roads(self) -> int:
+        return self.state.roads
+
+    @property
+    def moon_capable(self) -> bool:
+        """Whether this model has a moonlight timer (A7-S line does not)."""
+        from .const import model_has_moon
+
+        return model_has_moon(self.state.model or "")
+
+    @property
+    def labels(self) -> list[str]:
+        return self.state.labels
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.serial)},
+            name=self.name,
+            manufacturer="AIPAI (Doseen)",
+            model=self.state.model or "AIPAI Light",
+            serial_number=self.serial,
+        )
+
+    @property
+    def is_on(self) -> bool:
+        return any(v > 0 for v in self.channels[: self.roads])
+
+    # -- commands ----------------------------------------------------------
+
+    def set_channel(self, index: int, value_cmd: int) -> None:
+        value_cmd = max(0, min(1023, int(value_cmd)))
+        _LOGGER.debug("WRITE %s set_channel ch%d = %d", self.serial, index, value_cmd)
+        self.channels[index] = value_cmd
+        if value_cmd > 0:
+            self._restore[index] = value_cmd
+        self.client.set_channel(_road_code(index), value_cmd)
+        self._notify()
+
+    def turn_all_off(self) -> None:
+        _LOGGER.debug("WRITE %s turn_all_off", self.serial)
+        for i in range(self.roads):
+            if self.channels[i] > 0:
+                self._restore[i] = self.channels[i]
+            self.channels[i] = 0
+            self.client.set_channel(_road_code(i), 0)
+        self._notify()
+
+    def turn_all_on(self) -> None:
+        for i in range(self.roads):
+            value = self._restore[i] or pct_to_cmd(50)
+            self.channels[i] = value
+            self.client.set_channel(_road_code(i), value)
+        self._notify()
+
+    def persist_levels(self) -> bool:
+        """Save current live levels to the device so they survive a reboot.
+
+        Preserves the existing schedule verbatim. Requires a prior readconfig
+        (so we never overwrite the schedule with defaults). Note: a saveconfig
+        always powers the light on - that is how the firmware behaves.
+        """
+        if not self.has_state:
+            _LOGGER.warning("persist_levels skipped for %s: no state read yet", self.serial)
+            return False
+        road_val = list(self.state.road_val_pct)
+        for i in range(min(self.roads, len(road_val))):
+            road_val[i] = cmd_to_pct(self.channels[i])
+        self.state.road_val_pct = road_val
+        self.client.save_config(build_saveconfig(self.state))
+        return True
+
+    def restart(self) -> None:
+        self.client.restart()
+
+    # -- timed lights-off --------------------------------------------------
+
+    def attach_off_store(self, store) -> None:  # noqa: ANN001
+        self._off_store = store
+
+    async def async_lights_off(self, revert_at, *, persist: bool = True) -> None:
+        """Turn the tank off now and schedule its return at ``revert_at``.
+
+        Captures what to restore first: if the light was on its schedule
+        (mode 1) it resumes the schedule on revert; if it was manual, its levels
+        come back. Persisted so a restart re-arms or reverts (see off_store).
+        """
+        from datetime import datetime
+
+        prev_mode = self.state.mode if self.has_state else "1"
+        prev_pct = [cmd_to_pct(c) for c in self.channels[: self.roads]]
+        self._off_prev = (prev_mode, prev_pct)
+
+        self._cancel_off_timer()
+        self.turn_all_off()
+        if self.has_state and self.state.mode != "0":
+            self.set_mode("0")  # hold off; don't let the schedule re-light it
+
+        self.off_until = revert_at
+        self._off_unsub = async_track_point_in_time(
+            self.hass, self._on_off_expired, revert_at
+        )
+        if persist and self._off_store is not None:
+            iso = revert_at.isoformat() if isinstance(revert_at, datetime) else str(revert_at)
+            await self._off_store.async_set(self.serial, iso, prev_mode, prev_pct)
+        _LOGGER.info("Lights off for %s until %s", self.serial, self.off_until)
+        self._notify()
+
+    async def async_cancel_off(self, *, revert: bool = True) -> None:
+        """Cancel a pending timed-off; by default restore the tank now."""
+        self._cancel_off_timer()
+        prev = self._off_prev
+        self.off_until = None
+        self._off_prev = None
+        if self._off_store is not None:
+            await self._off_store.async_clear(self.serial)
+        if revert and prev is not None:
+            self._apply_revert(*prev)
+        self._notify()
+
+    async def async_restore_off(self, entry: dict) -> None:
+        """On startup, re-arm or immediately revert a persisted timed-off."""
+        try:
+            revert_at = dt_util.parse_datetime(entry["revert_at"])
+        except (KeyError, TypeError):
+            revert_at = None
+        prev_mode = entry.get("prev_mode", "1")
+        prev_pct = entry.get("prev_pct", [])
+        self._off_prev = (prev_mode, prev_pct)
+        if revert_at is None or revert_at <= dt_util.utcnow():
+            # Deadline already passed while HA was down - bring the tank back.
+            _LOGGER.info("Timed-off for %s already expired; restoring", self.serial)
+            self._apply_revert(prev_mode, prev_pct)
+            if self._off_store is not None:
+                await self._off_store.async_clear(self.serial)
+            return
+        # Still within the window - hold off and re-arm for the remainder.
+        self.off_until = revert_at
+        self.turn_all_off()
+        self._off_unsub = async_track_point_in_time(
+            self.hass, self._on_off_expired, revert_at
+        )
+        _LOGGER.info("Re-armed timed-off for %s until %s", self.serial, revert_at)
+        self._notify()
+
+    def _cancel_off_timer(self) -> None:
+        if self._off_unsub:
+            self._off_unsub()
+            self._off_unsub = None
+
+    @callback
+    def _on_off_expired(self, _now) -> None:  # noqa: ANN001
+        # @callback => runs in the event loop, so async_create_task is safe.
+        self.hass.async_create_task(self._async_off_expired())
+
+    async def _async_off_expired(self) -> None:
+        prev = self._off_prev or ("1", [])
+        self._off_unsub = None
+        self.off_until = None
+        self._off_prev = None
+        if self._off_store is not None:
+            await self._off_store.async_clear(self.serial)
+        self._apply_revert(*prev)
+        self._notify()
+
+    def _apply_revert(self, prev_mode: str, prev_pct: list[int]) -> None:
+        if self.has_state and str(prev_mode) == "1":
+            self.set_mode("1")  # resume the stored schedule
+        else:
+            for i, pct in enumerate(prev_pct[: self.roads]):
+                self.set_channel(i, pct_to_cmd(pct))
+
+    # -- night feeding -----------------------------------------------------
+
+    def attach_nf_store(self, store) -> None:  # noqa: ANN001
+        self._nf_store = store
+
+    @property
+    def is_night_feeding(self) -> bool:
+        return self._nf_active
+
+    def red_channels(self) -> list[int]:
+        """Channel indices whose label looks like red - the night-feeding default."""
+        red = [i for i, lab in enumerate(self.labels) if "red" in str(lab).lower()]
+        return red
+
+    def _nf_vector(self, level: int, channels: list[int] | None) -> list[int]:
+        """A full-length road_val vector: `level` on the chosen channels, 0 elsewhere."""
+        chans = [int(c) for c in channels] if channels else self.red_channels()
+        lvl = max(1, min(100, int(level)))
+        vec = [0] * self.state.roads_real
+        for i in chans:
+            if 0 <= i < len(vec):
+                vec[i] = lvl
+        return vec
+
+    async def async_start_night_feeding(
+        self, level: int, channels: list[int] | None = None, *, persist: bool = True
+    ) -> bool:
+        """Drop the light into manual mode showing only a dim red (one saveconfig).
+
+        Remembers the mode and levels in force beforehand so turning the switch
+        off restores them. The schedule curve (road_data) is preserved verbatim,
+        so switching off simply resumes it.
+        """
+        if not self.has_state:
+            _LOGGER.warning("night feeding skipped for %s: no state read yet", self.serial)
+            return False
+
+        prev_mode = self.state.mode
+        prev_pct = list(self.state.road_val_pct)
+        self._nf_prev = (prev_mode, prev_pct)
+
+        vec = self._nf_vector(level, channels)
+        self.state.road_val_pct = vec
+        self.state.mode = "0"
+        _LOGGER.info("WRITE %s night feeding ON (manual, levels=%s)", self.serial, vec[: self.roads])
+        self.client.save_config(build_saveconfig(self.state))
+        # Reflect the live look so entities/card update immediately.
+        self.channels = [pct_to_cmd(vec[i]) for i in range(self.roads)]
+        self._nf_active = True
+        if persist and self._nf_store is not None:
+            await self._nf_store.async_set(self.serial, prev_mode, prev_pct)
+        self._notify()
+        return True
+
+    async def async_stop_night_feeding(self, *, persist: bool = True) -> bool:
+        """Restore the pre-feeding mode and levels (one saveconfig).
+
+        By default that means resuming the schedule; if the light was in manual
+        mode before feeding, its manual levels come back instead.
+        """
+        prev_mode, prev_pct = self._nf_prev or ("1", [])
+        if self.has_state:
+            self.state.mode = prev_mode
+            if prev_pct:
+                n = self.state.roads_real
+                self.state.road_val_pct = list(prev_pct) + [0] * (n - len(prev_pct))
+            _LOGGER.info("WRITE %s night feeding OFF -> mode %s", self.serial, prev_mode)
+            self.client.save_config(build_saveconfig(self.state))
+            self.channels = [
+                pct_to_cmd(self.state.road_val_pct[i]) for i in range(self.roads)
+            ]
+        self._nf_active = False
+        self._nf_prev = None
+        if persist and self._nf_store is not None:
+            await self._nf_store.async_clear(self.serial)
+        # Pull fresh state so a resumed schedule's live levels catch up promptly.
+        self.request_refresh()
+        self._notify()
+        return True
+
+    async def async_restore_night_feed(self, entry: dict) -> None:
+        """On startup, re-adopt a night-feeding that was active before the restart.
+
+        The device already holds the manual red look (it was saved to the light),
+        so nothing is written - we just remember what to restore and mark the
+        switch on so the user can turn it off cleanly.
+        """
+        self._nf_prev = (entry.get("prev_mode", "1"), entry.get("prev_pct", []))
+        self._nf_active = True
+        _LOGGER.info("Re-adopted active night feeding for %s", self.serial)
+        self._notify()
+
+    # -- time / schedule / moon -------------------------------------------
+
+    def sync_clock(self, epoch: int | None = None) -> None:
+        """Set the device clock. With no epoch, compute the compensated one so the
+        manual SYNC CLOCK matches auto-sync (correct on half-hour zones like
+        Adelaide) instead of sending raw UTC."""
+        self.client.sync_clock(epoch if epoch is not None else self._compensated_epoch())
+
+    def apply_preset(self, preset: dict[str, Any]) -> bool:
+        """Apply a named preset (see presets.py) to this fixture.
+
+        A `levels` preset sets the channels now and drops the light into manual
+        mode so its stored day schedule doesn't override the look. A `schedule`
+        preset writes curves and switches to scheduled mode.
+        """
+        from .presets import build_curves, build_levels
+
+        labels = self.labels[: self.roads]
+        kind = preset.get("kind", "levels")
+
+        if kind == "schedule":
+            if not self.has_state:
+                _LOGGER.warning("preset skipped for %s: no state read yet", self.serial)
+                return False
+            curves = build_curves(preset, labels)
+            rows = [",".join(str(v) for v in c) for c in curves]
+            return self.apply_schedule(road_data=rows, mode="1")
+
+        levels = build_levels(preset, labels)
+        _LOGGER.debug(
+            "WRITE %s apply_preset (levels) -> MANUAL mode, levels=%s",
+            self.serial, levels,
+        )
+        # Manual mode first, so the schedule doesn't fight the look. Needs a
+        # saveconfig, which the firmware always powers on - harmless here since
+        # we immediately set the levels (including all-zero for "All off").
+        if self.has_state and self.state.mode != "0":
+            self.apply_schedule(mode="0")
+        for i, pct in enumerate(levels):
+            self.set_channel(i, pct_to_cmd(pct))
+        return True
+
+    def set_mode(self, mode: str) -> bool:
+        """Set control mode: '0' manual, '1' scheduled (sunrise/sunset)."""
+        if not self.has_state:
+            _LOGGER.warning("set_mode skipped for %s: no state read yet", self.serial)
+            return False
+        self.state.mode = "1" if str(mode) == "1" else "0"
+        _LOGGER.debug("WRITE %s set_mode -> %s", self.serial, self.state.mode)
+        self.client.save_config(build_saveconfig(self.state))
+        self._notify()
+        return True
+
+    @property
+    def mode(self) -> str:
+        return self.state.mode
+
+    def set_timezone(self, tz: int) -> bool:
+        """Set the device timezone (UTC offset). Persisted via saveconfig."""
+        if not self.has_state:
+            _LOGGER.warning("set_timezone skipped for %s: no state read yet", self.serial)
+            return False
+        self.state.timezone = str(int(tz))
+        self.client.save_config(build_saveconfig(self.state))
+        return True
+
+    def apply_schedule(
+        self,
+        road_data: list[str] | None = None,
+        open_hour: int | None = None,
+        close_hour: int | None = None,
+        mode: str | None = None,
+    ) -> bool:
+        """Write new per-channel schedule curves (and optional auto on/off hours).
+
+        `road_data` is a list of 24-value CSV strings, one per firmware road.
+        Requires a prior readconfig so untouched fields are preserved.
+        """
+        if not self.has_state:
+            _LOGGER.warning("apply_schedule skipped for %s: no state read yet", self.serial)
+            return False
+        if road_data is not None:
+            n = self.state.roads_real
+            rows = list(road_data)[:n] + [",".join(["0"] * 24)] * max(0, n - len(road_data))
+            self.state.road_data = rows
+        if open_hour is not None:
+            self.state.open_hour = int(open_hour)
+        if close_hour is not None:
+            self.state.close_hour = int(close_hour)
+        if mode is not None:
+            self.state.mode = "1" if str(mode) == "1" else "0"
+        _LOGGER.debug(
+            "WRITE %s apply_schedule mode=%s curves=%s (saveconfig forces power on)",
+            self.serial, self.state.mode, "yes" if road_data is not None else "unchanged",
+        )
+        self.client.save_config(build_saveconfig(self.state))
+        return True
+
+    def apply_night_light(
+        self,
+        start_hour: int,
+        end_hour: int,
+        level_pct: int,
+        channels: list[int],
+        enable: bool,
+    ) -> bool:
+        """Simulated moonlight: low level on chosen channels across a night window.
+
+        Written into the ordinary schedule curves and persisted via saveconfig -
+        so it works on every model, including those with no native moon timer
+        (e.g. the A7-S line). Requires a prior readconfig.
+        """
+        if not self.has_state:
+            _LOGGER.warning("apply_night_light skipped for %s: no state read yet", self.serial)
+            return False
+        from .schedule import curve_to_csv
+
+        # Rebuild from the clean daytime layer, so this write is exactly the day
+        # schedule plus the current night light - any earlier night residue (from
+        # other windows/channels/levels) is wiped, not stacked on.
+        day = self._day_base()
+        self.day_curves = day                 # lock in the base we rebuilt from
+        self.night_config = (
+            {
+                "enable": True,
+                "start_hour": int(start_hour) % 24,
+                "end_hour": int(end_hour) % 24,
+                "level": int(level_pct),
+                "channels": list(channels),
+            }
+            if enable
+            else None
+        )
+        merged = self._compose(day)
+        _LOGGER.debug(
+            "WRITE %s night_light %02d:00-%02d:00 level=%d ch=%s enable=%s",
+            self.serial, int(start_hour) % 24, int(end_hour) % 24, level_pct, channels, enable,
+        )
+        ok = self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
+        self._persist_night()
+        self._persist_day()
+        self._notify()  # push the new curves so the card chart updates immediately
+        return ok
+
+    def attach_night_store(self, store) -> None:  # noqa: ANN001
+        """Wire up schedule-layer persistence and restore the saved layers."""
+        self._night_store = store
+        saved = store.get_night(self.serial)
+        if saved:
+            self.night_config = saved
+        day = store.get_day(self.serial)
+        if day:
+            self.day_curves = [list(c) for c in day]
+
+    def _persist_night(self) -> None:
+        if self._night_store is None:
+            return
+        cfg = self.night_config
+        coro = (
+            self._night_store.async_set_night(self.serial, cfg)
+            if cfg
+            else self._night_store.async_clear_night(self.serial)
+        )
+        self.hass.async_create_task(coro)
+
+    def _persist_day(self) -> None:
+        if self._night_store is not None and self.day_curves is not None:
+            self.hass.async_create_task(
+                self._night_store.async_set_day(self.serial, self.day_curves)
+            )
+
+    def _persist_ip(self, ip: str) -> None:
+        """Remember a local light's IP so the next startup skips the subnet scan."""
+        if self._night_store is not None:
+            self.hass.async_create_task(self._night_store.async_set_ip(self.serial, ip))
+
+    def _device_rows(self) -> list[list[int]]:
+        """Current on-device curves as int rows (per firmware road)."""
+        rows: list[list[int]] = []
+        for row in self.state.road_data:
+            vals = [_safe_int(x) for x in str(row).split(",") if x != ""]
+            rows.append((vals + [0] * 24)[:24])
+        return rows
+
+    def _day_base(self) -> list[list[int]]:
+        """The daytime layer to build on.
+
+        Prefer the stored clean day layer (captured from the schedule editor). If
+        we don't have one yet, reconstruct it from the device by clearing the
+        tracked night window - correct once a clean baseline exists.
+        """
+        from .schedule import overlay_night
+
+        if self.day_curves is not None:
+            return [list(c) for c in self.day_curves]
+        rows = self._device_rows()
+        prev = self.night_config
+        if prev and prev.get("enable"):
+            rows = overlay_night(rows, prev["start_hour"], prev["end_hour"], [], 0, False)
+        return rows
+
+    def _compose(self, day: list[list[int]]) -> list[list[int]]:
+        """Full device curves = day + night light, then the acclimation ramp
+        dims the whole thing uniformly (1.0 when no ramp is active)."""
+        from .schedule import overlay_night, scale_curves
+
+        cfg = self.night_config
+        if cfg and cfg.get("enable"):
+            composed = overlay_night(
+                day, cfg["start_hour"], cfg["end_hour"],
+                cfg["channels"], cfg["level"], True,
+            )
+        else:
+            composed = [list(c) for c in day]
+        return scale_curves(composed, self.acclimation_factor())
+
+    # -- acclimation ramp --------------------------------------------------
+
+    def acclimation_factor(self) -> float:
+        """Current schedule multiplier (0..1): climbs from start% to 100% over
+        the configured weeks. 1.0 when no ramp is active."""
+        cfg = self.acclim
+        if not cfg:
+            return 1.0
+        from datetime import date
+
+        try:
+            started = date.fromisoformat(cfg["started"])
+        except (ValueError, KeyError, TypeError):
+            return 1.0
+        weeks = max(1, int(cfg.get("weeks", 4)))
+        start_pct = max(1, min(100, int(cfg.get("start_pct", 40))))
+        total_days = weeks * 7
+        elapsed = (dt_util.now().date() - started).days
+        progress = max(0.0, min(1.0, elapsed / total_days)) if total_days else 1.0
+        frac = start_pct / 100.0 + progress * (1.0 - start_pct / 100.0)
+        return max(0.0, min(1.0, frac))
+
+    @property
+    def is_acclimating(self) -> bool:
+        return self.acclim is not None
+
+    def acclimation_percent(self) -> int:
+        return round(self.acclimation_factor() * 100)
+
+    def acclimation_days_remaining(self) -> int:
+        cfg = self.acclim
+        if not cfg:
+            return 0
+        from datetime import date
+
+        try:
+            started = date.fromisoformat(cfg["started"])
+        except (ValueError, KeyError, TypeError):
+            return 0
+        total = max(1, int(cfg.get("weeks", 4))) * 7
+        return max(0, total - (dt_util.now().date() - started).days)
+
+    def _republish_schedule(self) -> None:
+        """Re-write the device curves for the current acclimation factor, without
+        disturbing a timed-off, a night-feed, or a manual look (schedule only)."""
+        if not self.has_state:
+            return
+        if self.off_until or self._nf_active or self.state.mode != "1":
+            return
+        from .schedule import curve_to_csv
+
+        rows = [curve_to_csv(c) for c in self._compose(self._day_base())]
+        self.apply_schedule(road_data=rows)  # mode unchanged
+
+    async def async_start_acclimation(self, start_pct: int, weeks: int) -> bool:
+        self.acclim = {
+            "started": dt_util.now().date().isoformat(),
+            "start_pct": max(1, min(100, int(start_pct))),
+            "weeks": max(1, int(weeks)),
+        }
+        _LOGGER.info("Acclimation started for %s: %d%% -> 100%% over %d weeks",
+                     self.serial, self.acclim["start_pct"], self.acclim["weeks"])
+        if self._night_store is not None:
+            await self._night_store.async_set_acclim(self.serial, self.acclim)
+        self._start_acclim_timer()
+        self._republish_schedule()
+        self._notify()
+        return True
+
+    async def async_stop_acclimation(self, *, completed: bool = False) -> bool:
+        if self.acclim is None:
+            return False
+        self.acclim = None
+        self._cancel_acclim_timer()
+        if self._night_store is not None:
+            await self._night_store.async_clear_acclim(self.serial)
+        _LOGGER.info("Acclimation %s for %s - back to full schedule",
+                     "completed" if completed else "stopped", self.serial)
+        self._republish_schedule()  # factor is now 1.0 -> full brightness
+        self._notify()
+        return True
+
+    async def async_restore_acclimation(self, cfg: dict[str, Any]) -> None:
+        """Re-adopt an in-progress ramp after a restart. The catch-up write
+        happens on the first readconfig, once device state is known."""
+        self.acclim = dict(cfg)
+        self._start_acclim_timer()
+
+    def _start_acclim_timer(self) -> None:
+        if self._acclim_unsub is None:
+            self._acclim_unsub = async_track_time_change(
+                self.hass, self._async_acclim_daily, hour=0, minute=5, second=0
+            )
+
+    def _cancel_acclim_timer(self) -> None:
+        if self._acclim_unsub is not None:
+            self._acclim_unsub()
+            self._acclim_unsub = None
+
+    @callback
+    def _async_acclim_daily(self, _now) -> None:  # noqa: ANN001
+        if not self.acclim:
+            return
+        if self.acclimation_factor() >= 1.0:
+            self.hass.async_create_task(self.async_stop_acclimation(completed=True))
+        else:
+            self._republish_schedule()
+            self._notify()
+
+    def apply_scene(self, levels_pct: list[int]) -> bool:
+        """Show a fixed per-channel look now (manual mode, one saveconfig).
+
+        A utility scene (e.g. all-white for maintenance). One-way by design -
+        resume the schedule from the Control mode select when you're done. The
+        atomic manual write is the same reliable path the night-feed look uses.
+        """
+        if not self.has_state:
+            _LOGGER.warning("apply_scene skipped for %s: no state read yet", self.serial)
+            return False
+        n = self.state.roads_real
+        vec = [max(0, min(100, int(v))) for v in levels_pct][:n]
+        vec += [0] * (n - len(vec))
+        self.state.road_val_pct = vec
+        self.state.mode = "0"
+        _LOGGER.info("WRITE %s apply_scene (manual) levels=%s", self.serial, vec[: self.roads])
+        self.client.save_config(build_saveconfig(self.state))
+        self.channels = [pct_to_cmd(vec[i]) for i in range(self.roads)]
+        self._notify()
+        return True
+
+    def blue_channels(self) -> list[int]:
+        """Channel indices whose label looks like blue - the moonlight default."""
+        blue = [i for i, lab in enumerate(self.labels) if "blue" in str(lab).lower()]
+        if blue:
+            return blue
+        # No blue label (unusual): fall back to channel 2 (index 1), the usual blue.
+        return [1] if self.roads > 1 else [0]
+
+    def white_channels(self) -> list[int]:
+        """Channel indices whose label looks like white (the storm flash, with blue)."""
+        return [i for i, lab in enumerate(self.labels) if "white" in str(lab).lower()]
+
+    # -- storm / lightning effect -----------------------------------------
+
+    async def async_run_storm(self, duration_s: int = 20) -> bool:
+        """Run a lightning storm for ``duration_s`` seconds, then resume the
+        schedule.
+
+        The device overrides live writes while its schedule runs, so the effect
+        briefly takes the light into manual mode at the *current* scheduled
+        brightness (no visible jump), flickers the white+blue channels on top,
+        and always restores scheduled mode in a finally - a crash can't strand
+        the tank in manual. Occasional use by design (each run is two saveconfigs).
+        """
+        import asyncio
+        import random
+
+        if self._storm_active or not self.has_state:
+            return False
+        if self._nf_active or self.off_until:
+            _LOGGER.debug("storm skipped for %s: feed/timed-off active", self.serial)
+            return False
+
+        self._storm_active = True
+        prev_mode = self.state.mode or "1"
+        # Ambient = the schedule's current look, so entering manual doesn't jump.
+        composed = self._compose(self._day_base())
+        hour = dt_util.now().hour
+        ambient = [
+            composed[i][hour] if i < len(composed) and hour < len(composed[i]) else 0
+            for i in range(self.roads)
+        ]
+        flash = sorted(set(self.blue_channels()) | set(self.white_channels()))
+        if not flash:
+            flash = list(range(self.roads))
+        _LOGGER.info("Storm on %s for %ss (flash channels %s)", self.serial, duration_s, flash)
+        try:
+            # Enter manual at the ambient look (road_data/schedule untouched).
+            self.state.road_val_pct = list(ambient) + [0] * (self.state.roads_real - len(ambient))
+            self.state.mode = "0"
+            self.client.save_config(build_saveconfig(self.state))
+            await asyncio.sleep(0.6)  # let the mode change land before flashing
+
+            end = time.monotonic() + max(2, int(duration_s))
+            while time.monotonic() < end:
+                # One strike = a short burst of 1-3 quick flickers.
+                for _ in range(random.randint(1, 3)):
+                    for i in flash:
+                        self.client.set_channel(_road_code(i), pct_to_cmd(100))
+                    await asyncio.sleep(random.uniform(0.06, 0.16))
+                    for i in flash:
+                        self.client.set_channel(_road_code(i), pct_to_cmd(ambient[i]))
+                    await asyncio.sleep(random.uniform(0.05, 0.14))
+                # Quiet gap until the next strike.
+                await asyncio.sleep(random.uniform(0.8, 3.5))
+        finally:
+            self.state.mode = prev_mode
+            self.client.save_config(build_saveconfig(self.state))
+            self._storm_active = False
+            self._notify()
+            _LOGGER.info("Storm on %s finished - schedule resumed", self.serial)
+        return True
+
+    # -- preview / save / discard -----------------------------------------
+
+    def capture_snapshot(self) -> dict[str, Any] | None:
+        """The light's current *settings* - the thing Save commits.
+
+        Deliberately excludes live state (channel values, temperature): those
+        change constantly and must never register as an unsaved change.
+        """
+        if not self.has_state:
+            return None
+        return {
+            "road_data": list(self.state.road_data),
+            "mode": self.state.mode,
+            "moon": dict(self.moon),
+        }
+
+    def apply_points(self, points: list[dict]) -> bool:
+        """Preview a time-point schedule on the fixture straight away.
+
+        `points` is [{"hour": 7, "levels": [..per channel..]}, ...]. Writing is
+        immediate by design - the whole reason to preview is to judge it in the
+        water. Roll-back safety comes from the saved baseline in draft_store.
+        """
+        from .schedule import build_curves_from_points, curve_to_csv
+
+        if not self.has_state:
+            _LOGGER.warning("apply_points skipped for %s: no state read yet", self.serial)
+            return False
+        _LOGGER.debug("WRITE %s apply_points (preview) %d points -> AUTO mode",
+                      self.serial, len(points))
+        # These points ARE the daytime layer (the editor edits the day layer, not
+        # the composed curves). Capture it clean, then write day + night light so
+        # editing the day schedule keeps the night light instead of wiping it.
+        day = build_curves_from_points(points, self.state.roads_real)
+        self.day_curves = [list(c) for c in day]
+        self._persist_day()
+        rows = [curve_to_csv(c) for c in self._compose(day)]
+        return self.apply_schedule(road_data=rows, mode="1")
+
+    def restore_snapshot(self, snapshot: dict[str, Any]) -> bool:
+        """Write a previously saved configuration back to the light (Discard)."""
+        from .draft import normalise_snapshot
+        from .schedule import hhmm_dotted
+
+        if not self.has_state:
+            _LOGGER.warning("restore skipped for %s: no state read yet", self.serial)
+            return False
+        norm = normalise_snapshot(snapshot)
+        _LOGGER.debug("WRITE %s restore_snapshot (discard) -> mode=%s",
+                      self.serial, norm["mode"] or "unchanged")
+        rows = [",".join(str(v) for v in row) for row in norm["road_data"]]
+        ok = self.apply_schedule(
+            road_data=rows or None, mode=norm["mode"] or None
+        )
+        moon = norm.get("moon") or {}
+        if moon and "start" in moon and "end" in moon:
+            # Already literal HH.MM in the snapshot; hhmm_dotted is a no-op on
+            # floats but keeps the one true conversion point in schedule.py.
+            self.set_moon(
+                color_hex=moon.get("color", "00A0E9"),
+                level_pct=int(moon.get("level", 0)),
+                start_hhmm=hhmm_dotted(moon["start"]),
+                end_hhmm=hhmm_dotted(moon["end"]),
+                enable=bool(moon.get("run", False)),
+            )
+        return ok
+
+    def set_moon(
+        self,
+        color_hex: str,
+        level_pct: int,
+        start_hhmm: float,
+        end_hhmm: float,
+        enable: bool,
+        save: bool = True,
+    ) -> None:
+        """Configure the native moonlight timer (spawning trigger).
+
+        color_hex like '#00A0E9'; level_pct 0-100; start/end as literal HH.MM
+        (6.30 == 06:30), i.e. the output of schedule.hhmm_dotted - NOT decimal
+        hours. Passing 6.5 here would set 06:50 on the device.
+        """
+        color = "0x" + color_hex.lstrip("#").upper()
+        level_255 = round(max(0, min(100, level_pct)) * 255 / 100)
+        _LOGGER.debug("WRITE %s set_moon %s-%s level=%d enable=%s",
+                      self.serial, start_hhmm, end_hhmm, level_pct, enable)
+        self.client.set_moon(color, level_255, start_hhmm, end_hhmm, enable, save)
+        self.moon = {
+            "color": color_hex, "level": level_pct,
+            "start": start_hhmm, "end": end_hhmm, "run": enable,
+        }
+        self._notify()
+
+    # -- MQTT thread callbacks --------------------------------------------
+
+    def _handle_connection_change(self, connected: bool) -> None:
+        was_connected = self._connected
+        self._connected = connected
+        self.hass.loop.call_soon_threadsafe(self._notify)
+        if connected and not was_connected:
+            # A light that just came back (e.g. after a power blip) has no
+            # battery-backed clock, so it may return with the wrong time. Re-sync
+            # once fresh state (and thus its timezone) has arrived. The very first
+            # connect is handled by the `first` readconfig path instead.
+            if self.has_state:
+                self._resync_on_state = True
+            if not self.local:
+                self.hass.loop.call_soon_threadsafe(self.request_refresh)
+
+    def _handle_message(self, payload: dict[str, Any]) -> None:
+        self.hass.loop.call_soon_threadsafe(self._process_message, payload)
+
+    def _process_message(self, payload: dict[str, Any]) -> None:
+        msg_type = payload.get("type", "")
+        msg = payload.get("msg", "")
+
+        self._last_reply = time.monotonic()  # any reply proves the device is online
+        self.last_seen = dt_util.utcnow()
+
+        if msg_type == "readconfig":
+            first = not self.has_state
+            state = parse_readconfig(msg)
+            # The A8SE8 controller identifier also appears on six-channel
+            # fixtures.  Keep all firmware state internally, but expose only
+            # the physical channels selected by the user.
+            state.roads, state.labels = resolve_channel_profile(
+                self._channel_profile, state.model, state.roads_real
+            )
+            self.state = state
+            self.has_state = True
+            # Resize live arrays to match the resolved channel count.
+            if len(self.channels) != state.roads:
+                self.channels = [0] * state.roads
+                self._restore = [pct_to_cmd(50)] * state.roads
+            for i, cmd in enumerate(state.channel_cmd_values()):
+                self.channels[i] = cmd
+                if cmd > 0:
+                    self._restore[i] = cmd
+            self._notify()
+            if first:
+                # We now know the device's timezone: sync its clock immediately.
+                self.auto_sync_clock()
+                # Catch the acclimation ramp up to today's level after a restart.
+                if self.acclim is not None:
+                    self._republish_schedule()
+            elif self._resync_on_state:
+                # The light just reconnected (e.g. after losing power). Its clock
+                # may have reset, so correct it now that its timezone is known.
+                self._resync_on_state = False
+                _LOGGER.info("%s reconnected - re-syncing clock", self.serial)
+                self.auto_sync_clock()
+        elif msg_type == "online":
+            self._notify()
+            self.request_refresh()
+        elif msg_type in ("saveconfig", "clock", "moonSet"):
+            # Confirmation that a write landed on the device.
+            self.last_ack = {"type": msg_type, "msg": msg, "at": dt_util.utcnow().isoformat()}
+            _LOGGER.debug("%s ack for %s: %s", msg_type, self.serial, msg)
+            self._notify()
+
+        # Moon state may arrive in its own reply; capture it if present.
+        if "moonColor" in payload:
+            self.moon = {
+                "color": "#" + str(payload.get("moonColor", "0x")).replace("0x", ""),
+                "level": round(int(payload.get("moonLevel", 0)) * 100 / 255),
+                "start": payload.get("moonStart"),
+                "end": payload.get("moonEnd"),
+                "run": payload.get("moonRun") == 1,
+            }
+            self._notify()
+
+    def _notify(self) -> None:
+        self._check_dropout_edge()
+        for entity in self._entities:
+            entity.async_write_ha_state()
+
+    def _check_dropout_edge(self) -> None:
+        """Detect a drop/recover transition, feed the reliability tracker, and
+        fire a (debounced) event + notification.
+
+        Driven off `available` (connected AND replying within grace), re-evaluated
+        on every poll tick, reply and connection change. Only acts on an actual
+        edge, so it never spams - the first evaluation just records the baseline.
+        The reliability tracker sees the real edge immediately; the user-facing
+        alert waits out a debounce window so a brief blip stays quiet.
+        """
+        now_available = self.available
+        prev = self._was_available
+        if prev is None:
+            self._was_available = now_available
+            return
+        if now_available == prev:
+            return
+        self._was_available = now_available
+
+        now = dt_util.utcnow()
+        if not now_available:
+            self.dropouts.record_offline(now)
+            self._schedule_dropout_announce()
+        else:
+            self.dropouts.record_online(now)
+            self._cancel_dropout_timer()
+            if self._dropout_active:
+                # Only announce recovery if a dropout was actually announced -
+                # avoids a spurious "reconnected" after a debounced blip or the
+                # first connect at startup.
+                self._dropout_active = False
+                self._announce_reconnected()
+
+    def _schedule_dropout_announce(self) -> None:
+        """Announce the dropout only after it has persisted for the debounce
+        window - a short blip (e.g. a WiFi hiccup) never raises an alert."""
+        self._cancel_dropout_timer()
+        if self._dropout_debounce <= 0:
+            self._announce_dropout()
+            return
+        from homeassistant.helpers.event import async_call_later
+
+        self._dropout_timer = async_call_later(
+            self.hass, self._dropout_debounce, self._on_dropout_timer
+        )
+
+    @callback
+    def _on_dropout_timer(self, _now) -> None:  # noqa: ANN001
+        self._dropout_timer = None
+        if not self.available:  # still down after the debounce window
+            self._announce_dropout()
+
+    def _cancel_dropout_timer(self) -> None:
+        if self._dropout_timer is not None:
+            self._dropout_timer()
+            self._dropout_timer = None
+
+    def _announce_dropout(self) -> None:
+        from homeassistant.components import persistent_notification
+
+        self._dropout_active = True
+        _LOGGER.warning("AIPAI %s (%s) dropped off the network", self.name, self.serial)
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_dropout",
+            {
+                "serial": self.serial,
+                "name": self.name,
+                "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            },
+        )
+        persistent_notification.async_create(
+            self.hass,
+            f"{self.name} (serial {self.serial}) has dropped off the network - "
+            "it stopped responding. Check its power and WiFi.",
+            title="Aquarium light offline",
+            notification_id=f"{DOMAIN}_dropout_{self.serial}",
+        )
+
+    def _announce_reconnected(self) -> None:
+        from homeassistant.components import persistent_notification
+
+        _LOGGER.info("AIPAI %s (%s) is back online", self.name, self.serial)
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_reconnected", {"serial": self.serial, "name": self.name}
+        )
+        persistent_notification.async_dismiss(
+            self.hass, f"{DOMAIN}_dropout_{self.serial}"
+        )
+
+
+def _road_code(index: int) -> str:
+    from .const import ROAD_CODES
+
+    return ROAD_CODES[index]
+
+
+def _safe_int(value) -> int:  # noqa: ANN001
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0

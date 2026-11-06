@@ -1,0 +1,537 @@
+apply_preset:
+  name: Apply preset
+  description: >-
+    Apply a named lighting preset — a look (Viewing, Feeding, Maintenance,
+    All off) or a day schedule (Daylight, Bright day, Low light), plus any you
+    have saved yourself.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    preset:
+      name: Preset
+      description: The preset name, as shown in the light's Preset dropdown.
+      example: Viewing (blue)
+      selector:
+        text:
+
+save_preset:
+  name: Save preset
+  description: >-
+    Save a light's current channel levels as a reusable preset. Stored by
+    channel name, so it applies to other models too.
+  fields:
+    serial:
+      name: Serial
+      description: The light whose current levels you want to capture.
+      example: "12345678"
+      selector:
+        text:
+    name:
+      name: Preset name
+      example: Evening blues
+      selector:
+        text:
+
+delete_preset:
+  name: Delete preset
+  description: Delete a preset you saved (built-in presets can't be removed).
+  fields:
+    name:
+      name: Preset name
+      example: Evening blues
+      selector:
+        text:
+
+generate_dashboard:
+  name: Generate dashboard
+  description: >-
+    Build a Lovelace dashboard containing every configured AIPAI light, using
+    their real entity IDs. Run it here, then copy the returned YAML into a
+    dashboard's Raw configuration editor. Re-run after adding a light.
+  fields:
+    style:
+      name: Style
+      description: >-
+        "core" uses stock Home Assistant cards. "mushroom" needs the Mushroom
+        and auto-entities HACS cards, and auto-populates new lights.
+      default: core
+      selector:
+        select:
+          options:
+            - core
+            - mushroom
+    tanks:
+      name: Tank grouping (optional)
+      description: 'Group lights into tanks, e.g. Display=12345678,12345678;Frag=12345678'
+      example: "Display=12345678,12345678;Frag=12345678"
+      selector:
+        text:
+    designer_url:
+      name: Designer URL
+      description: Where the schedule designer is served from.
+      default: /aipai_light/designer.html
+      selector:
+        text:
+
+sync_clock:
+  name: Sync clock
+  description: >-
+    Set an AIPAI light's clock. With no datetime, syncs to the current real
+    time (UTC). Optionally set the timezone (UTC offset) and/or a specific
+    device-local date/time.
+  fields:
+    serial:
+      name: Serial(s)
+      description: >-
+        One serial, several serials, or leave empty to target every configured
+        light. Add multiple to push the same clock to all your lights at once.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    datetime:
+      name: Device-local date/time
+      description: Target local time on the device, 'YYYY-MM-DD HH:MM:SS'. Omit to use now.
+      example: "2026-07-15 20:00:00"
+      selector:
+        text:
+    timezone:
+      name: Timezone (UTC offset hours)
+      example: 12
+      selector:
+        number:
+          min: -12
+          max: 14
+          step: 1
+
+set_schedule:
+  name: Set schedule
+  description: >-
+    Write per-channel 24-hour curves (0-100 per hour) to the light. Intended
+    to be fed by the visual designer's exported curves.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    curves:
+      name: Curves
+      description: List of per-channel curves, each a list of 24 integers (0-100).
+      selector:
+        object:
+    open_hour:
+      name: Auto-on hour
+      selector:
+        number:
+          min: 0
+          max: 23
+    close_hour:
+      name: Auto-off hour
+      selector:
+        number:
+          min: 0
+          max: 23
+    mode:
+      name: Control mode
+      description: Optionally switch the light — "1" scheduled (sunrise/sunset), "0" manual.
+      example: "1"
+      selector:
+        select:
+          options:
+            - "0"
+            - "1"
+
+set_channel_period:
+  name: Set channel period
+  description: >-
+    Set one channel to a level between start and end with sunrise/sunset
+    ramps, building that channel's 24-hour curve (other channels preserved).
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    channel:
+      name: Channel
+      description: Channel index (0-based) or label (e.g. "White").
+      example: White
+      selector:
+        text:
+    start:
+      name: Start
+      example: "10:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "16:00"
+      selector:
+        text:
+    level:
+      name: Peak level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    ramp_up:
+      name: Ramp up (hours)
+      selector:
+        number:
+          min: 0
+          max: 12
+          step: 0.25
+    ramp_down:
+      name: Ramp down (hours)
+      selector:
+        number:
+          min: 0
+          max: 12
+          step: 0.25
+
+set_moon:
+  name: Set moonlight
+  description: Configure the native moonlight timer (e.g. to trigger spawning).
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    color:
+      name: Colour
+      example: "#00A0E9"
+      selector:
+        text:
+    level:
+      name: Level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    start:
+      name: Start
+      example: "21:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "06:00"
+      selector:
+        text:
+    enable:
+      name: Enable
+      selector:
+        boolean:
+    preview:
+      name: Preview only
+      description: If on, sends a live preview without saving to the device.
+      selector:
+        boolean:
+
+set_night_light:
+  name: Set night light (simulated moonlight)
+  description: >-
+    Simulate moonlight using the ordinary schedule - a low level on chosen
+    channels across an overnight window, written into the light's 24-hour curves
+    and saved. Works on every model, including those with no native moon timer
+    (e.g. the A7-S line). Re-apply after changing the daytime schedule.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    start:
+      name: Start
+      example: "19:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "07:00"
+      selector:
+        text:
+    level:
+      name: Level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    channels:
+      name: Channel indices
+      description: >-
+        Zero-based channel indices to light (default: the blue channel(s)).
+      selector:
+        object:
+    enable:
+      name: Enable
+      description: Off clears the night level on those channels in the window.
+      selector:
+        boolean:
+
+preview_schedule:
+  name: Preview schedule
+  description: >-
+    Write a time-point schedule to the light immediately so it can be judged in
+    the water. Not permanent until Save settings is called; Discard changes
+    rolls back to the last saved copy.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    points:
+      name: Time points
+      description: >-
+        A list of {hour, levels} - the hour (0-23) and one level (0-100) per
+        channel at that hour. The light fades between consecutive points and is
+        dark outside the first and last, so a 0% point at 07:00 next to a 100%
+        point at 09:00 is a two-hour sunrise.
+      example: >-
+        [{"hour": 7, "levels": [0,0,0,0,0,0,0,0]},
+         {"hour": 9, "levels": [100,40,20,20,40,50,50,80]},
+         {"hour": 17, "levels": [20,100,20,20,100,80,80,10]},
+         {"hour": 19, "levels": [0,0,0,0,0,0,0,0]}]
+      selector:
+        object:
+
+save_settings:
+  name: Save settings
+  description: >-
+    Commit what the light is running now as its saved configuration. Discard
+    changes will roll back to this point.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+discard_changes:
+  name: Discard changes
+  description: >-
+    Write the last saved configuration back to the light, undoing any preview.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+unsaved_changes:
+  name: Unsaved changes
+  description: >-
+    Report which lights are running settings that differ from their last saved
+    copy. Returns {lights: [{serial, unsaved, saved_at, known}], any_unsaved}.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+save_slot:
+  name: Save preset slot
+  description: >-
+    Capture a light's current channel levels into one of the three preset
+    slots. Slots start empty - there are no built-in presets.
+  fields:
+    serial:
+      name: Serial
+      description: Which light's current look to capture.
+      example: "12345678"
+      required: true
+      selector:
+        text:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+    name:
+      name: Name
+      example: "Evening blues"
+      selector:
+        text:
+
+
+set_slot:
+  name: Set preset slot (explicit levels)
+  description: >-
+    Store a preset directly from given channel levels, without capturing the
+    light's current state. Used when editing a preset's contents.
+  fields:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+    name:
+      name: Name
+      example: "Evening blues"
+      selector:
+        text:
+    levels:
+      name: Levels
+      description: 'Channel levels keyed by label, e.g. {Blue: 90, White: 5}.'
+      selector:
+        object:
+
+apply_slot:
+  name: Apply preset slot
+  description: Apply a saved preset slot to one, many, or all lights.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+
+clear_slot:
+  name: Clear preset slot
+  description: Empty a preset slot.
+  fields:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+
+export_config:
+  name: Export config
+  description: >-
+    Produce a portable, shareable copy of a light's schedule and preset slots.
+    Channels are keyed by name, so the result can be imported onto a fixture
+    with a different channel count.
+  fields:
+    serial:
+      name: Serial
+      example: "12345678"
+      required: true
+      selector:
+        text:
+    name:
+      name: Config name
+      description: Optional label stored inside the exported config.
+      example: "Mixed reef - 60cm"
+      selector:
+        text:
+    include_slots:
+      name: Include preset slots
+      selector:
+        boolean:
+
+import_config:
+  name: Import config
+  description: >-
+    Read a shared config and preview it on the light. Reports any channels your
+    fixture doesn't have. Like any preview, it isn't permanent until Save
+    settings is called.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    config:
+      name: Config
+      description: The exported config, as JSON text or an object.
+      selector:
+        object:
+    apply:
+      name: Apply
+      description: Turn off to validate the config without changing the lights.
+      selector:
+        boolean:
+
+lights_off:
+  name: Lights off (timer)
+  description: >-
+    Turn the tank off now and automatically bring it back after a set time.
+    If it was following its schedule, it resumes the schedule; if manual, its
+    levels come back. Survives a Home Assistant restart.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    minutes:
+      name: For (minutes)
+      description: How long to stay off. Use this or "until", not both.
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+    until:
+      name: Until (time)
+      description: Local clock time to come back on (HH:MM). Use this or "minutes".
+      example: "07:00"
+      selector:
+        text:
+
+cancel_lights_off:
+  name: Cancel lights off
+  description: Cancel a pending timed-off and bring the tank back now.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+storm:
+  name: Lightning storm
+  description: >-
+    Run a brief lightning storm (flickering the white/blue channels) over the
+    current scheduled look, then resume the schedule. Great for triggering when
+    it actually storms outside. Occasional use by design.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    duration:
+      name: Duration (seconds)
+      description: How long the storm runs. Defaults to 20 seconds.
+      selector:
+        number:
+          min: 2
+          max: 300
+          unit_of_measurement: s
