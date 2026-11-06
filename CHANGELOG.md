@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.17.4] - 2026-11-07
+
+### Added
+
+- Reef Studio zeigt die tatsächlich geladene Oberflächen-Version dauerhaft im Kopfbereich an.
+
 ## [0.17.3] - 2026-11-07
 
 ### Added
