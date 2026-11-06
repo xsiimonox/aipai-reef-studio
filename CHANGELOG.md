@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.16.4] - 2026-11-07
+
+### Added
+
+- Bereits gespeicherte Tagesprogramme und Szenen haben jetzt die eigene Aktion „Als neues … speichern“. Sie legt unabhängig vom umbenannten Original einen zusätzlichen Bibliothekseintrag an.
+
 ## [0.16.3] - 2026-11-07
 
 ### Fixed

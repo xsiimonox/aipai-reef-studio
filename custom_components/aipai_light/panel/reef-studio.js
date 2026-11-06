@@ -369,8 +369,9 @@ class ReefStudioPanel extends HTMLElement {
         <div class="sliders">${this.light.labels.map((label, i) => `<label class="slider" style="--c:${COLORS[i]}">
           <span>${escape(label)}</span><input type="range" min="0" max="100" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)}">
           <input type="number" min="0" max="100" step="1" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)} Prozent"></label>`).join("")}</div>
-      </div></div><div class="actions"><button id="save" class="primary">In Bibliothek speichern</button>
-        <small>Änderungen im Entwurf sind eine Bildschirmvorschau.</small></div>`;
+      </div></div><div class="actions"><button id="save" class="primary">${this.itemId ? "Änderungen speichern" : "In Bibliothek speichern"}</button>
+        ${this.itemId ? `<button id="save-new">Als neues ${programs ? "Programm" : "Szene"} speichern</button>` : ""}
+        <small>„Als neues … speichern“ legt eine unabhängige Kopie in der Bibliothek an.</small></div>`;
     node.querySelector("#name").oninput = event => { item.name = event.target.value; };
     node.querySelectorAll("[data-level]").forEach(input => {
       input.oninput = () => {
@@ -386,6 +387,12 @@ class ReefStudioPanel extends HTMLElement {
     node.querySelector("#save").onclick = () => {
       if (!node.querySelector("#name").reportValidity()) return;
       this.send("save", { ...(this.itemId ? { item_id: this.itemId } : {}), item });
+    };
+    const saveNew = node.querySelector("#save-new");
+    if (saveNew) saveNew.onclick = () => {
+      if (!node.querySelector("#name").reportValidity()) return;
+      // Omitting item_id makes the backend allocate a new library entry.
+      this.send("save", { item });
     };
     if (!programs) return;
     const showPoint = () => { this.preview = item.points[this.point].minute; this.renderDraft(true); this.update(); };
