@@ -76,12 +76,14 @@ class ReefStudioPanel extends HTMLElement {
 
   disconnectedCallback() {
     clearInterval(this.timer);
+    clearInterval(this.clockTimer);
     clearTimeout(this.previewTimer);
     this.timer = null;
   }
 
   start() {
     this.timer = setInterval(() => this.refresh(), 8000);
+    this.clockTimer = setInterval(() => this.update(), 1000);
     this.refresh();
   }
 
@@ -251,11 +253,23 @@ class ReefStudioPanel extends HTMLElement {
     }).join("")}</div>`;
   }
 
+  secondsUntil(timestamp, light) {
+    if (!timestamp) return null;
+    const offset = (light.now_epoch ?? Date.now() / 1000) * 1000 - Date.now();
+    return Math.max(0, Math.ceil(timestamp - (Date.now() + offset) / 1000));
+  }
+
+  durationText(seconds) {
+    if (seconds == null) return "";
+    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
   update() {
     const light = this.light;
     if (!light || !this.$.querySelector("#chart")) return;
     const program = light.programs[light.program];
     const scene = light.scenes[light.scene?.id];
+    const sceneRemaining = this.secondsUntil(light.scene?.until, light);
     const draft = this.kind === "programs" && this.draft;
     const points = sorted(draft?.points ?? program?.points ?? light.firmware_points);
     const preview = this.preview ?? light.minute;
@@ -269,14 +283,14 @@ class ReefStudioPanel extends HTMLElement {
     const label = light.sent ? "Zuletzt per HTTP bestätigt" :
       light.mode === "1" ? "Manuelle Pegel aus der Firmware" : "Von der Lampe gemeldet";
     this.$.querySelector("#live").innerHTML = `
-      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens 5 Min." : scene ? "Szene · " + scene.name : program ? "Aktiv · " + program.name :
+      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens 5 Min." : scene ? "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining) : program ? "Aktiv · " + program.name :
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<div class="actions"><small>Kurvenwert um ${clock(preview)} · Sollwert</small></div>
         ${this.bars(interpolate(points, preview))}` : ""}`;
     const control = this.$.querySelector("#control");
     const buttons = [
-      scene && ["resume", "Szene beenden"],
+      scene && ["resume", "Szene abbrechen – Tagesprogramm fortsetzen"],
       (light.program || light.scene || light.preview || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
     const signature = JSON.stringify(buttons);
@@ -359,7 +373,7 @@ class ReefStudioPanel extends HTMLElement {
       node.querySelector("#activate").onclick = () => {
         const duration = node.querySelector("#duration");
         if (duration && !duration.reportValidity()) return;
-        this.send("activate", { item_id: this.itemId, ...(duration ? { duration: this.duration } : {}) });
+        this.send("activate", { item_id: this.itemId, ...(duration ? { duration: Number(duration.value) } : {}) });
       };
       const manual = node.querySelector("#manual");
       if (manual) manual.onclick = () => this.send("manual", { item_id: this.itemId });

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_call_later, async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -83,10 +83,12 @@ class ReefStudio:
         self.sent_at: str | None = None
         self.error: str | None = None
         self.unsubscribe = None
+        self.expiry_cancel = None
         self.closed = False
 
     async def start(self) -> None:
         self.data.update(await self.store.async_load() or {})
+        self._schedule_expiry()
         if self.hub.local:
             self.unsubscribe = async_track_time_change(self.hub.hass, self.tick, second=0)
             self.hub.hass.async_create_background_task(self.tick(), "aipai_studio_start")
@@ -95,6 +97,9 @@ class ReefStudio:
         self.closed = True
         if self.unsubscribe:
             self.unsubscribe()
+        if self.expiry_cancel:
+            self.expiry_cancel()
+            self.expiry_cancel = None
         async with self.lock:
             pass
 
@@ -119,6 +124,7 @@ class ReefStudio:
             "online": self.hub.available and self.hub.has_state,
             "minute": now.hour * 60 + now.minute,
             "timezone": str(now.tzinfo),
+            "now_epoch": dt_util.utcnow().timestamp(),
             "mode": state.mode,
             "power": state.power,
             "reported": state.road_val_pct[:self.hub.roads] if self.hub.has_state else [],
@@ -133,6 +139,26 @@ class ReefStudio:
         updated = self.data | changes
         await self.store.async_save(updated)
         self.data = updated
+        self._schedule_expiry()
+
+    def _schedule_expiry(self) -> None:
+        """Wake precisely when a preview or temporary scene is due to end."""
+        if self.expiry_cancel:
+            self.expiry_cancel()
+            self.expiry_cancel = None
+        deadlines = [
+            item["until"] for item in (self.data.get("preview"), self.data.get("scene"))
+            if item and isinstance(item.get("until"), (int, float))
+        ]
+        if not deadlines or self.closed:
+            return
+        delay = max(0, min(deadlines) - dt_util.utcnow().timestamp())
+
+        async def _expire(_now) -> None:  # noqa: ANN001
+            self.expiry_cancel = None
+            await self.tick()
+
+        self.expiry_cancel = async_call_later(self.hub.hass, delay, _expire)
 
     def owns_output(self) -> bool:
         return any(self.data[key] for key in ("program", "scene", "preview", "restore"))

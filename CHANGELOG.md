@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.17.1] - 2026-11-07
+
+### Fixed
+
+- Szenen werden nun serverseitig sekundengenau beendet, statt erst beim nächsten Minuten-Takt geprüft zu werden. Beim Start liest Reef Studio die gewählte Dauer direkt aus dem Eingabefeld.
+
+### Added
+
+- Aktive Szenen zeigen einen sekündlich aktualisierten Restzeit-Countdown. „Szene abbrechen – Tagesprogramm fortsetzen“ beendet sie jederzeit und kehrt sofort zum Tagesprogramm beziehungsweise vorherigen Zustand zurück.
+
 ## [0.17.0] - 2026-11-07
 
 ### Added
