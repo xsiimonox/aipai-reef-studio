@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.17.0] - 2026-11-07
+
+### Added
+
+- Live-Vorschau beim Bearbeiten: Regleränderungen aus einem Tagesprogramm oder einer Szene werden direkt an die Lampe gesendet. Jede Änderung hält die Vorschau bis zu fünf Minuten aktiv; anschließend übernimmt wieder das vorher aktive Programm oder der ursprüngliche Lampenzustand.
+- Gespeicherte Szenen können über „Manueller Modus · 60 Min.“ für genau eine Stunde aktiviert werden. Danach kehrt die Lampe automatisch zum normalen Programm beziehungsweise Zustand zurück.
+
+### Changed
+
+- Die frei wählbare Laufzeit einer Szene ist auf maximal 60 Minuten begrenzt.
+
 ## [0.16.4] - 2026-11-07
 
 ### Added

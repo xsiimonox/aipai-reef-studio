@@ -76,6 +76,7 @@ class ReefStudioPanel extends HTMLElement {
 
   disconnectedCallback() {
     clearInterval(this.timer);
+    clearTimeout(this.previewTimer);
     this.timer = null;
   }
 
@@ -86,6 +87,38 @@ class ReefStudioPanel extends HTMLElement {
 
   get light() { return this.lights.find(light => light.serial === this.serial); }
   get $() { return this.shadowRoot; }
+
+  queueLivePreview(levels) {
+    const light = this.light;
+    if (!light || light.group || !light.local || !light.online) return;
+    this.previewLevels = [...levels];
+    clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => this.sendLivePreview(), 180);
+  }
+
+  async sendLivePreview() {
+    if (this.previewRequest) {
+      this.previewQueued = true;
+      return;
+    }
+    const levels = this.previewLevels;
+    if (!levels) return;
+    this.previewRequest = true;
+    try {
+      const data = await this._hass.callWS({
+        type: "aipai_light/studio", action: "preview", serial: this.serial, levels,
+      });
+      if (this.isConnected) this.receive(data);
+    } catch (error) {
+      this.status(error.message || "Live-Vorschau konnte nicht gesendet werden.");
+    } finally {
+      this.previewRequest = false;
+      if (this.previewQueued || this.previewLevels !== levels) {
+        this.previewQueued = false;
+        this.sendLivePreview();
+      }
+    }
+  }
 
   async refresh() {
     if (this.busy || this.reading) return;
@@ -236,7 +269,7 @@ class ReefStudioPanel extends HTMLElement {
     const label = light.sent ? "Zuletzt per HTTP bestätigt" :
       light.mode === "1" ? "Manuelle Pegel aus der Firmware" : "Von der Lampe gemeldet";
     this.$.querySelector("#live").innerHTML = `
-      <small>${escape(scene ? "Szene · " + scene.name : program ? "Aktiv · " + program.name :
+      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens 5 Min." : scene ? "Szene · " + scene.name : program ? "Aktiv · " + program.name :
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<div class="actions"><small>Kurvenwert um ${clock(preview)} · Sollwert</small></div>
@@ -244,7 +277,7 @@ class ReefStudioPanel extends HTMLElement {
     const control = this.$.querySelector("#control");
     const buttons = [
       scene && ["resume", "Szene beenden"],
-      (light.program || light.scene || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
+      (light.program || light.scene || light.preview || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
     const signature = JSON.stringify(buttons);
     if (control.dataset.buttons !== signature) {
@@ -295,7 +328,8 @@ class ReefStudioPanel extends HTMLElement {
         <select id="library" aria-label="Gespeicherter Eintrag"><option value="">Eintrag auswählen</option>
         ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
         ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
-        ${programs ? "" : `<label class="field">Dauer in Minuten<input id="duration" type="number" min="1" max="180" value="${this.duration}"></label>`}
+        ${programs ? "" : `<label class="field">Dauer in Minuten (max. 60)<input id="duration" type="number" min="1" max="60" value="${this.duration}"></label>
+        ${isGroup ? "" : `<button id="manual" data-live>Manueller Modus · 60 Min.</button>`}`}
         ${isGroup ? "" : `<button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>`}` : ""}
       </div><div id="draft"></div>`;
     const newButton = node.querySelector("#new");
@@ -327,6 +361,8 @@ class ReefStudioPanel extends HTMLElement {
         if (duration && !duration.reportValidity()) return;
         this.send("activate", { item_id: this.itemId, ...(duration ? { duration: this.duration } : {}) });
       };
+      const manual = node.querySelector("#manual");
+      if (manual) manual.onclick = () => this.send("manual", { item_id: this.itemId });
       const duration = node.querySelector("#duration");
       if (duration) duration.oninput = () => { this.duration = Number(duration.value); };
       const copy = node.querySelector("#copy");
@@ -380,6 +416,7 @@ class ReefStudioPanel extends HTMLElement {
         node.querySelectorAll(`[data-level="${input.dataset.level}"]`).forEach(peer => {
           if (peer !== input) peer.value = input.value;
         });
+        this.queueLivePreview(levels);
         this.update();
       };
       input.onchange = () => { input.value = levels[input.dataset.level]; };

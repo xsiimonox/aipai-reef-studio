@@ -74,7 +74,10 @@ class ReefStudio:
     def __init__(self, hub: AipaiLightHub) -> None:
         self.hub = hub
         self.store = Store(hub.hass, 1, f"{DOMAIN}.studio.{hub.serial}")
-        self.data = {"programs": {}, "scenes": {}, "program": None, "scene": None, "restore": None}
+        self.data = {
+            "programs": {}, "scenes": {}, "program": None, "scene": None,
+            "preview": None, "restore": None,
+        }
         self.lock = asyncio.Lock()
         self.sent: list[int] | None = None
         self.sent_at: str | None = None
@@ -108,7 +111,7 @@ class ReefStudio:
                 for hour in range(24)
             ]
         return {
-            **{key: self.data[key] for key in ("programs", "scenes", "program", "scene")},
+            **{key: self.data[key] for key in ("programs", "scenes", "program", "scene", "preview")},
             "serial": self.hub.serial,
             "name": self.hub.name,
             "labels": self.hub.labels,
@@ -132,7 +135,7 @@ class ReefStudio:
         self.data = updated
 
     def owns_output(self) -> bool:
-        return any(self.data[key] for key in ("program", "scene", "restore"))
+        return any(self.data[key] for key in ("program", "scene", "preview", "restore"))
 
     async def tick(self, _now=None) -> None:
         if self.closed or self.lock.locked():
@@ -145,18 +148,24 @@ class ReefStudio:
                 self.error = str(err)
 
     async def update_output(self) -> None:
+        preview = self.data["preview"]
+        if preview and preview["until"] <= dt_util.utcnow().timestamp():
+            await self.save({"preview": None})
+            preview = None
         scene = self.data["scene"]
         if scene and scene["until"] <= dt_util.utcnow().timestamp():
             await self.save({"scene": None})
             scene = None
         program = self.data["program"]
         restore = self.data["restore"]
-        if not self.hub.local or not (program or scene or restore):
+        if not self.hub.local or not (program or scene or preview or restore):
             return
         if not self.hub.has_state:
             raise OSError("Warte auf den ersten Status der Lampe.")
         target = None
-        if scene:
+        if preview:
+            target = validate_levels(preview["levels"], self.hub.roads)
+        elif scene:
             target = validate_levels(self.data["scenes"][scene["id"]]["levels"], self.hub.roads)
         elif program:
             now = self.hub._now()
@@ -243,6 +252,16 @@ class ReefStudio:
                 return
             if not self.hub.local:
                 raise ValueError("Für die Lampensteuerung bitte Local control aktivieren.")
+            if action == "preview":
+                if not self.hub.has_state or not self.hub.available:
+                    raise OSError("Die Lampe ist gerade nicht erreichbar.")
+                levels = validate_levels(msg.get("levels"), self.hub.roads)
+                await self.save({
+                    "preview": {"levels": levels, "until": dt_util.utcnow().timestamp() + 5 * 60},
+                })
+                self.sent = None
+                await self.update_output()
+                return
             if action == "activate":
                 if not self.hub.has_state or not self.hub.available:
                     raise OSError("Die Lampe ist gerade nicht erreichbar.")
@@ -250,14 +269,20 @@ class ReefStudio:
                     raise ValueError("Bitte einen gespeicherten Eintrag wählen.")
                 validate_item(kind, library[item_id], self.hub.roads)
                 if kind == "programs":
-                    await self.save({"program": item_id, "scene": None})
+                    await self.save({"program": item_id, "scene": None, "preview": None})
                 else:
                     until = dt_util.utcnow().timestamp() + 60 * msg.get("duration", 15)
-                    await self.save({"scene": {"id": item_id, "until": until}})
+                    await self.save({"scene": {"id": item_id, "until": until}, "preview": None})
+            elif action == "manual":
+                if kind != "scenes" or item_id not in library:
+                    raise ValueError("Bitte eine gespeicherte Szene für den manuellen Modus wählen.")
+                validate_item("scenes", library[item_id], self.hub.roads)
+                until = dt_util.utcnow().timestamp() + 60 * 60
+                await self.save({"scene": {"id": item_id, "until": until}, "preview": None})
             elif action == "resume":
-                await self.save({"scene": None})
+                await self.save({"scene": None, "preview": None})
             else:
-                await self.save({"scene": None, "program": None})
+                await self.save({"scene": None, "program": None, "preview": None})
             self.sent = None
             try:
                 await self.update_output()
@@ -276,13 +301,14 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "resume", "release", "group_save", "group_delete",
+        "list", "save", "delete", "activate", "manual", "preview", "resume", "release", "group_save", "group_delete",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),
     vol.Optional("item_id"): str,
     vol.Optional("item"): dict,
-    vol.Optional("duration"): vol.All(int, vol.Range(min=1, max=180)),
+    vol.Optional("duration"): vol.All(int, vol.Range(min=1, max=60)),
+    vol.Optional("levels"): [int],
     vol.Optional("name"): str,
     vol.Optional("serials"): [str],
 })
