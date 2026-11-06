@@ -217,7 +217,11 @@ class ReefStudio:
                 self.data["program"] == item_id or (scene and scene["id"] == item_id)
             )
             if action in ("save", "delete"):
-                if in_use:
+                # It is safe (and expected) to refine an active program/scene.
+                # Persist the new version first and re-evaluate its output below.
+                # Deleting the active entry is still prohibited: it would leave
+                # the currently controlling schedule without a source.
+                if action == "delete" and in_use:
                     raise ValueError("Bitte zuerst das aktive Programm oder die Szene beenden.")
                 if item_id is not None and item_id not in library:
                     raise ValueError("Der Eintrag wurde bereits gelöscht.")
@@ -229,6 +233,13 @@ class ReefStudio:
                 elif item_id is not None:
                     del updated[item_id]
                 await self.save({kind: updated})
+                if action == "save" and in_use:
+                    self.sent = None
+                    try:
+                        await self.update_output()
+                    except (OSError, ValueError) as err:
+                        self.error = str(err)
+                        raise
                 return
             if not self.hub.local:
                 raise ValueError("Für die Lampensteuerung bitte Local control aktivieren.")

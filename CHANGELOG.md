@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.16.3] - 2026-11-07
+
+### Fixed
+
+- Bereits aktive Tagesprogramme und Szenen können bearbeitet und gespeichert werden. Reef Studio berechnet die neuen Werte danach sofort neu und übernimmt sie auf die Lampe; nur das Löschen eines aktiven Eintrags bleibt geschützt.
+
 ## [0.16.2] - 2026-11-07
 
 ### Fixed
