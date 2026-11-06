@@ -110,7 +110,11 @@ class ReefStudioPanel extends HTMLElement {
     this.lights = [...payload.lights, ...payload.groups];
     this.groups = payload.groups;
     if (!this.light) {
-      this.serial = lights[0]?.serial;
+      // The WebSocket command returns an object (`{lights, groups}`), rather
+      // than the legacy bare array.  Select the first actual lamp from that
+      // payload; indexing `lights` here left `serial` undefined and made the
+      // empty-state appear even though a lamp had been configured.
+      this.serial = payload.lights[0]?.serial ?? payload.groups[0]?.serial ?? null;
       this.reset();
     }
     if (changed) this.render();

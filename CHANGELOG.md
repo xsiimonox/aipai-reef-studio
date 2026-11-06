@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.16.1] - 2026-11-07
+
+### Fixed
+
+- Reef Studio wählt nach dem Laden der WebSocket-Antwort wieder zuverlässig die erste eingerichtete Lampe aus, statt fälschlich den Leerzustand anzuzeigen.
+
 ## [0.16.0] - 2026-11-06
 
 ### Added
