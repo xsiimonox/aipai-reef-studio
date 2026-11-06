@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/icon.png" width="128" alt="AIPAI Reef Studio"></p>
+<p align="center"><img src="assets/reef-studio-logo.png" width="180" alt="AIPAI Reef Studio"></p>
 
 # AIPAI Reef Studio
 
