@@ -27,7 +27,7 @@ class BridgeTransport {
       const first = members[0];
       const common = field => members.every(lamp=>field === 'scene' ? lamp.scene?.id === first.scene?.id && lamp.scene?.manual === first.scene?.manual : field === 'preview' ? !!lamp.preview === !!first.preview : JSON.stringify(lamp[field])===JSON.stringify(first[field])) ? first[field] : null;
       return {...first,serial:'group:'+id,group:true,group_id:id,name:group.name,members:group.serials,
-        labels:BRIDGE_LABELS.slice(0,Math.min(...members.map(lamp=>lamp.labels.length))),
+        labels:BRIDGE_LABELS.slice(0,Math.max(...members.map(lamp=>lamp.labels.length))),
         online:members.every(lamp=>lamp.online),program:common('program'),scene:common('scene'),preview:common('preview'),
         sent:null,reported:[],error:members.map(lamp=>lamp.error).filter(Boolean).join(' · ')};
     });

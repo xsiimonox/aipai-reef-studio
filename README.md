@@ -75,7 +75,7 @@ Szenen speichern ein festes Spektrum. Sie können für 1 bis 60 Minuten gestarte
 
 ### Gruppen
 
-Eine Gruppe kann eine oder mehrere Lampen enthalten. Gruppeneinträge starten Programme oder Szenen auf allen Mitgliedern. Dadurch können Lampen mit unterschiedlichen Kanalprofilen zusammen arbeiten, ohne nicht vorhandene Kanäle anzusprechen.
+Eine Gruppe kann eine oder mehrere Lampen enthalten. Gruppeneinträge starten Programme oder Szenen auf allen Mitgliedern. Bei gemischten 6-/8-Kanal-Gruppen sind alle acht Kanäle einstellbar. UV und Warm White wirken ausschließlich auf Lampen mit diesen Kanälen; Sechskanal-Lampen erhalten nur die ersten sechs Werte. Das gilt für Programme, Szenen und die zeitlich begrenzte Uhrzeit-Vorschau in HA und Reef Bridge.
 
 ## Entwicklung und Releases
 

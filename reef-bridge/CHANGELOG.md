@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.2.1] - 2026-11-07
+
+- Gemischte Gruppen bieten alle acht Kanäle. UV und Warm White wirken nur auf MAX-Lampen; Sechskanal-Lampen erhalten ausschließlich ihre sechs Werte. Gemeinsamer Editor mit HA 0.21.2.
+
 ## [0.2.0] - 2026-11-07
 
 - Gemeinsamer Reef-Studio-Editor mit Home Assistant; keine zweite Designkopie.

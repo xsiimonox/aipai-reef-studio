@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.21.2] - 2026-11-07
+
+### Fixed
+
+- Gemischte Gruppen aus 6- und 8-Kanal-Lampen zeigen alle acht Kanäle im Programm- und Szeneneditor. UV und Warm White werden ausschließlich an unterstützende Lampen gesendet; Sechskanal-Lampen ignorieren die zusätzlichen Werte. Gilt für HA und Reef Bridge 0.2.1.
+- Der gemeinsame Vorschau-Timer bleibt auch bei unterschiedlich langen Kanalvektoren in gemischten HA-Gruppen sichtbar und abbrechbar.
+
 ## [0.21.1] - 2026-11-07
 
 ### Changed

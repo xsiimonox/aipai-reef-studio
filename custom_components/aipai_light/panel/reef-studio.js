@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.21.1";
+const REEF_STUDIO_VERSION = "0.21.2";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -438,7 +438,7 @@ class ReefStudioPanel extends HTMLElement {
     node.innerHTML = `<div class="row spread"><h2>${programs ? "Programmbibliothek" : "Szenenbibliothek"}</h2>
       <button id="new" class="primary">${programs ? "+ Programm" : "+ Szene"}</button></div>
       <p class="muted">${programs ? "Gemeinsame Bibliothek für alle Lampen. Zwischen den Zeitpunkten gehen die Kanalwerte gleichmäßig ineinander über." :
-        "Gemeinsame Looks für alle Lampen, etwa Blaulicht oder Foto. Zeitlich starten oder im manuellen Modus dauerhaft halten."}</p>
+        "Gemeinsame Looks für alle Lampen, etwa Blaulicht oder Foto. Zeitlich starten oder im manuellen Modus dauerhaft halten."}${light.group && light.labels.length > 6 ? " UV und Warm White wirken nur auf Lampen, die diese Kanäle unterstützen." : ""}</p>
       <div class="actions library-actions">${Object.keys(library).length ? `
         <select id="library" aria-label="Gespeicherter Eintrag"><option value="">Eintrag auswählen</option>
         ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}

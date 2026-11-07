@@ -3,13 +3,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 (async()=>{
  const root=path.resolve(__dirname,'..'),repo=path.resolve(root,'..');
+ const firmware=JSON.parse(fs.readFileSync(path.join(root,'installer/manifest.json'),'utf8')).version;
  const html=fs.readFileSync(path.join(root,'web/index.html'),'utf8')
    .replace('/* SHARED_STUDIO */',()=>fs.readFileSync(path.join(repo,'custom_components/aipai_light/panel/reef-studio.js'),'utf8'))
    .replace('/* BRIDGE_ADAPTER */',()=>fs.readFileSync(path.join(root,'web/bridge-adapter.js'),'utf8'));
  const points=[0,540,660,1080,1200].map((minute,i)=>({minute,levels:[25,70,3,2,85,12,5,15].map(v=>i===2||i===3?v:0)}));
  const workspace={schema:1,lamps:[],programs:{day:{name:'Riff · Tageslicht',points}},scenes:{blue:{name:'Blaulicht',levels:[0,40,0,0,80,10,0,0]}},groups:{}};
  const calls=[],runtime=[];let state;
- const reset=()=>{state={version:'0.2.0',workspace,now_epoch:Date.now()/1000,update:{available:false,latest:'0.2.0'},lights:runtime};};reset();
+ const reset=()=>{state={version:firmware,workspace,now_epoch:Date.now()/1000,update:{available:false,latest:firmware},lights:runtime};};reset();
  const browser=await chromium.launch({headless:true});
  try{
   const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -55,10 +56,16 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   for(const box of await ui.locator('[type=checkbox]').all())await box.check();await ui.locator('#save-group').click();
   await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=scenes]').click();await ui.locator('#library').selectOption('blue');
   await ui.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.scene?.manual===true);
-  assert.equal(await ui.locator('[data-level][type=range]').count(),6);
+  assert.equal(await ui.locator('[data-level][type=range]').count(),8);
   await ui.locator('[data-action=resume]').click();await ui.locator('#library').selectOption('blue');await ui.locator('#duration').fill('12');await ui.locator('#activate').click();
   assert(calls.some(c=>c.body.action==='activate'&&c.body.duration===12&&c.body.serial==='group:group1'));
   await ui.locator('#new').click();assert(await ui.locator('#save').isVisible());
+  await ui.locator('#name').fill('Gruppe · UV und Warm White');await ui.locator('[data-level="6"][type=number]').fill('71');await ui.locator('[data-level="7"][type=number]').fill('83');await ui.locator('#save').click();
+  assert(calls.some(c=>c.body.action==='save'&&c.body.serial==='group:group1'&&c.body.item.levels?.[6]===71&&c.body.item.levels?.[7]===83));
+  await ui.locator('[data-tab=programs]').click();await ui.locator('#new').click();
+  assert.equal(await ui.locator('[data-level][type=range]').count(),8);
+  await ui.locator('#name').fill('Gruppe · Achtkanal-Tag');await ui.locator('[data-level="6"][type=number]').fill('65');await ui.locator('#save').click();
+  assert(calls.some(c=>c.body.action==='save'&&c.body.serial==='group:group1'&&c.body.item.points?.[0].levels[6]===65));
   // Native countdown continues between network polls.
   const before=await ui.evaluate(el=>{el.testDeadline=Date.now()/1000+60;return el.secondsUntil(el.testDeadline,el.light);});await page.waitForTimeout(1100);const after=await ui.evaluate(el=>el.secondsUntil(el.testDeadline,el.light));assert(after<before,'Countdown must tick between polls');
   assert.deepEqual(errors,[]);console.log('PASS: onboarding, 6/8 channels, shared library save, preview duration, mixed group manual/scene/resume, responsive 320–1440px; no JS errors. '+screenshotDir);

@@ -46,12 +46,11 @@ class ReefGroups:
         output = []
         for group_id, group in self.groups.items():
             members = [studios[serial] for serial in group["serials"] if serial in studios]
-            if len(members) != len(group["serials"]):
+            if not members or len(members) != len(group["serials"]):
                 continue
-            shared_labels = [
-                label for label in members[0].hub.labels
-                if all(label in studio.hub.labels for studio in members[1:])
-            ]
+            # Channel order is common across A7/A8SE and MAX models. Expose
+            # the largest profile; each controller fits output to its fixture.
+            group_labels = list(max((studio.hub.labels for studio in members), key=len))
             def shared(kind: str) -> dict:
                 # Programmes and scenes are now stored once for all fixtures.
                 # Returning their original ids makes the group editor fully
@@ -69,13 +68,15 @@ class ReefGroups:
                 scene = None
             preview = members[0].data.get("preview")
             if preview and not all(
-                other.data.get("preview") and other.data["preview"].get("levels") == preview.get("levels")
+                other.data.get("preview") and
+                other.data["preview"].get("levels", [])[:min(len(other.hub.labels), len(members[0].hub.labels))] ==
+                preview.get("levels", [])[:min(len(other.hub.labels), len(members[0].hub.labels))]
                 for other in members
             ):
                 preview = None
             output.append({
                 "serial": f"group:{group_id}", "group_id": group_id, "name": group["name"],
-                "members": group["serials"], "labels": shared_labels,
+                "members": group["serials"], "labels": group_labels,
                 "local": all(studio.hub.local for studio in members),
                 "online": all(studio.hub.available for studio in members),
                 "minute": members[0].hub._now().hour * 60 + members[0].hub._now().minute,
@@ -106,9 +107,8 @@ class ReefGroups:
         for studio in members:
             command = dict(msg)
             if action == "preview":
-                # A mixed 6/8-channel group only exposes its common controls.
-                # Fill additional MAX channels with zero for this temporary
-                # preview, while preserving an 8-channel profile in the library.
+                # Mixed groups expose the largest profile. Truncate only this
+                # fixture's outgoing values, retaining UV/warm white for MAX.
                 levels = command.get("levels", [])
                 command["levels"] = (levels + [0] * studio.hub.roads)[:studio.hub.roads]
             await studio.command(command)

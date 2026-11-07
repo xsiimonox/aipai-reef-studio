@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.2.0** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
+Firmware **0.2.1** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
 
 ![Reef Studio auf der Bridge](docs/bridge-desktop.png)
 
@@ -16,7 +16,7 @@ Firmware **0.2.0** mit demselben Reef-Studio-Editor wie Home Assistant. Tagespro
 
 - Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und proportionaler Gesamtintensitätsregler.
 - Gemeinsame lokale Programm- und Szenenbibliothek für alle Lampen dieser Bridge. Neue Einträge, Bearbeiten, Duplizieren, Löschen und Aktivieren. Bis 32 Programme und 32 Szenen, insgesamt maximal 48 KB JSON bzw. die verfügbare Parser-Kapazität; größere Änderungen werden mit Fehlermeldung abgelehnt.
-- Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Die Gruppe zeigt die gemeinsam vorhandenen Kanäle; MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
+- Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
 - Programme laufen lokal, ohne offenen Browser oder Home Assistant. Jede Lampe hat einen eigenen aktiven Eintrag und eigene Timer. Ein Profilwechsel einer Lampe ändert nicht automatisch die Auswahl einer anderen Lampe.
 - Temporäre Szenen 1–60 Minuten, dauerhafter manueller Modus, Countdown und Abbruch. Regler einer einzelnen Lampe starten eine Vorschau für eine Minute im Programmeditor bzw. fünf Minuten im Szeneneditor. Gruppen lassen sich über die Uhrzeit-Vorschau oder eine gespeicherte Szene ansehen.
 - Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft Firmware-Updates nach WLAN-Verbindung und alle sechs Stunden. Installation bewusst über den USB-Installer; OTA ist noch nicht implementiert.
