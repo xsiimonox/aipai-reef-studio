@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.4";
+const REEF_STUDIO_VERSION = "0.18.5";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -236,6 +236,8 @@ class ReefStudioPanel extends HTMLElement {
         <div id="chart" class="timeline"></div>
         <div class="scrub"><input id="preview" type="range" min="0" max="1439" aria-label="Uhrzeit der Vorschau">
           <output id="preview-time"></output><button id="now-button" class="subtle">Jetzt</button></div>
+        <div class="actions"><label class="field">An Lampe anzeigen (Min.)<input id="curve-preview-duration" type="number" min="1" max="60" value="${this.curvePreviewMinutes ?? 5}"></label>
+          <button id="curve-preview" data-curve-preview ${light.group ? "disabled" : ""}>Diese Uhrzeit anzeigen</button></div>
         <div class="legend">${light.labels.map((label, index) =>
           `<span><i class="dot" style="--c:${COLORS[index]}"></i>${escape(label)}</span>`).join("")}</div>
       </section><section class="panel"><div class="row spread"><h2>Kanalpegel</h2><span id="online" class="pill"></span></div>
@@ -262,6 +264,23 @@ class ReefStudioPanel extends HTMLElement {
       this.update();
     };
     this.$.querySelector("#now-button").onclick = () => { this.preview = null; this.update(); };
+    const curvePreview = this.$.querySelector("#curve-preview");
+    curvePreview.onclick = () => {
+      const duration = this.$.querySelector("#curve-preview-duration");
+      if (!duration.reportValidity()) return;
+      this.curvePreviewMinutes = Number(duration.value);
+      const activeProgram = this.light.programs[this.light.program];
+      const source = this.kind === "programs" && this.draft?.points ? this.draft.points :
+        activeProgram?.points ?? this.light.firmware_points;
+      if (source.length < 2) {
+        this.status("Für diese Uhrzeit ist noch kein Tagesverlauf vorhanden.");
+        return;
+      }
+      this.send("preview", {
+        levels: interpolate(sorted(source), this.preview ?? this.light.minute),
+        preview_seconds: this.curvePreviewMinutes * 60,
+      });
+    };
     this.editor();
     this.update();
   }
@@ -292,6 +311,7 @@ class ReefStudioPanel extends HTMLElement {
     const program = light.programs[light.program];
     const scene = light.scenes[light.scene?.id];
     const sceneRemaining = this.secondsUntil(light.scene?.until, light);
+    const previewRemaining = this.secondsUntil(light.preview?.until, light);
     const draft = this.kind === "programs" && this.draft;
     const points = sorted(draft?.points ?? program?.points ?? light.firmware_points);
     const preview = this.preview ?? light.minute;
@@ -305,7 +325,7 @@ class ReefStudioPanel extends HTMLElement {
     const label = light.sent ? "Zuletzt per HTTP bestätigt" :
       light.mode === "1" ? "Manuelle Pegel aus der Firmware" : "Von der Lampe gemeldet";
     this.$.querySelector("#live").innerHTML = `
-      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens " + (this.kind === "programs" ? "1 Min." : "5 Min.") : scene ? (light.scene?.manual ? "Manueller Modus · " + scene.name + " · dauerhaft" : "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining)) : program ? "Aktiv · " + program.name :
+      <small>${escape(light.preview ? "Live-Vorschau · noch " + this.durationText(previewRemaining) + " · danach Tagesprofil" : scene ? (light.scene?.manual ? "Manueller Modus · " + scene.name + " · dauerhaft" : "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining)) : program ? "Aktiv · " + program.name :
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<div class="actions"><small>Kurvenwert um ${clock(preview)} · Sollwert</small></div>
@@ -325,6 +345,8 @@ class ReefStudioPanel extends HTMLElement {
     this.$.querySelectorAll("[data-live]").forEach(button => {
       button.disabled = this.busy || !light.local || !light.online;
     });
+    const curvePreview = this.$.querySelector("[data-curve-preview]");
+    if (curvePreview) curvePreview.disabled = this.busy || !light.local || !light.online || light.group;
   }
 
   draw(points, now, preview) {

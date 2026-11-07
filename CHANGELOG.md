@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.5] - 2026-11-07
+
+### Added
+
+- Tagesverlauf-Vorschau auf der Lampe: Eine frei gewählte Uhrzeit aus der Kurve lässt sich für 1 bis 60 Minuten direkt auf der Lampe anzeigen. Der Restzeit-Countdown zeigt die exakte Rückkehr zum Tagesprofil.
+
 ## [0.18.4] - 2026-11-07
 
 ### Fixed

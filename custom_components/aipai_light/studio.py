@@ -339,7 +339,7 @@ def register_studio_api(hass) -> None:
     vol.Optional("item_id"): str,
     vol.Optional("item"): dict,
     vol.Optional("duration"): vol.All(int, vol.Range(min=1, max=60)),
-    vol.Optional("preview_seconds"): vol.All(int, vol.Range(min=30, max=300)),
+    vol.Optional("preview_seconds"): vol.All(int, vol.Range(min=30, max=60 * 60)),
     vol.Optional("levels"): [int],
     vol.Optional("name"): str,
     vol.Optional("serials"): [str],
