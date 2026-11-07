@@ -19,13 +19,13 @@ from .protocol import build_saveconfig, parse_readconfig, pct_to_cmd
 DAY = 1440
 
 
-def levels_at(points: list[dict], minute: int) -> list[int]:
+def levels_at(points: list[dict], minute: int, curve: str = "linear") -> list[int]:
     """Interpolate across midnight as well as between daytime points."""
     right = next((i for i, p in enumerate(points) if p["minute"] > minute), 0)
     start, end = points[right - 1], points[right]
     span = (end["minute"] - start["minute"]) % DAY
     fraction = ((minute - start["minute"]) % DAY) / span
-    if end.get("curve") == "sine":
+    if curve == "sine":
         from math import cos, pi
 
         fraction = (1 - cos(pi * fraction)) / 2
@@ -65,7 +65,17 @@ def validate_item(kind: str, item: dict, count: int) -> dict:
         })
     if len({point["minute"] for point in validated}) != len(validated):
         raise ValueError("Jede Uhrzeit darf nur einmal vorkommen.")
-    return {"name": name.strip(), "points": sorted(validated, key=lambda point: point["minute"])}
+    # Older saved programs stored a curve per point. Keep them compatible by
+    # promoting any prior sine selection to one global program curve.
+    curve = item.get("curve")
+    if curve is None:
+        curve = "sine" if any(point["curve"] == "sine" for point in validated) else "linear"
+    if curve not in ("linear", "sine"):
+        raise ValueError("Kurvenform muss linear oder sinus sein.")
+    return {
+        "name": name.strip(), "points": sorted(validated, key=lambda point: point["minute"]),
+        "curve": curve,
+    }
 
 
 class ReefStudio:
@@ -203,8 +213,8 @@ class ReefStudio:
             target = validate_levels(self.data["scenes"][scene["id"]]["levels"], self.hub.roads)
         elif program:
             now = self.hub._now()
-            points = validate_item("programs", self.data["programs"][program], self.hub.roads)["points"]
-            target = levels_at(points, now.hour * 60 + now.minute)
+            validated = validate_item("programs", self.data["programs"][program], self.hub.roads)
+            target = levels_at(validated["points"], now.hour * 60 + now.minute, validated["curve"])
 
         async def prepare(body: str) -> list[str]:
             state = parse_readconfig(body)

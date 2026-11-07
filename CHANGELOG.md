@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.0] - 2026-11-07
+
+### Changed
+
+- Die Übergangsform ist jetzt eine globale Eigenschaft des gesamten Tagesprogramms statt einer Einstellung pro Stützpunkt. „Sinus, weich“ glättet damit den vollständigen Verlauf einheitlich.
+- Die Kurvengrafik wird im Zwei-Minuten-Raster berechnet und zeichnet weiche Übergänge sichtbar glatt statt stufig.
+
 ## [0.19.1] - 2026-11-07
 
 ### Added

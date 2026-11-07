@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.19.1";
+const REEF_STUDIO_VERSION = "0.20.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -8,15 +8,17 @@ const toMinute = time => {
   return time ? hour * 60 + minute : NaN;
 };
 const sorted = points => [...points].sort((a, b) => a.minute - b.minute);
+const programCurve = program => program?.curve ??
+  (program?.points?.some(point => point.curve === "sine") ? "sine" : "linear");
 
-function interpolate(points, minute) {
+function interpolate(points, minute, curve = "linear") {
   const right = points.findIndex(point => point.minute > minute);
   const end = points[right < 0 ? 0 : right];
   const start = points[(right < 0 ? points.length : right) - 1] ?? points.at(-1);
   const span = (end.minute - start.minute + 1440) % 1440;
   const elapsed = (minute - start.minute + 1440) % 1440;
   let fraction = span ? elapsed / span : 0;
-  if (end.curve === "sine") fraction = (1 - Math.cos(Math.PI * fraction)) / 2;
+  if (curve === "sine") fraction = (1 - Math.cos(Math.PI * fraction)) / 2;
   return start.levels.map((level, i) => Math.round(level + (end.levels[i] - level) * fraction));
 }
 
@@ -275,14 +277,15 @@ class ReefStudioPanel extends HTMLElement {
       if (!duration.reportValidity()) return;
       this.curvePreviewMinutes = Number(duration.value);
       const activeProgram = this.light.programs[this.light.program];
-      const source = this.kind === "programs" && this.draft?.points ? this.draft.points :
-        activeProgram?.points ?? this.light.firmware_points;
+      const sourceProgram = this.kind === "programs" && this.draft?.points ? this.draft : activeProgram;
+      const source = sourceProgram?.points ?? this.light.firmware_points;
+      const sourceCurve = programCurve(sourceProgram);
       if (source.length < 2) {
         this.status("Für diese Uhrzeit ist noch kein Tagesverlauf vorhanden.");
         return;
       }
       this.send("preview", {
-        levels: interpolate(sorted(source), this.preview ?? this.light.minute),
+        levels: interpolate(sorted(source), this.preview ?? this.light.minute, sourceCurve),
         preview_seconds: this.curvePreviewMinutes * 60,
       });
     };
@@ -319,12 +322,13 @@ class ReefStudioPanel extends HTMLElement {
     const previewRemaining = this.secondsUntil(light.preview?.until, light);
     const draft = this.kind === "programs" && this.draft;
     const points = sorted(draft?.points ?? program?.points ?? light.firmware_points);
+    const curve = programCurve(draft ?? program);
     const preview = this.preview ?? light.minute;
     this.$.querySelector("#now").textContent = `${clock(light.minute)} · ${light.timezone}`;
     this.$.querySelector("#curve-title").textContent = draft ? "Programm-Vorschau" : program ? program.name : "Kurve in der Lampe";
     this.$.querySelector("#preview").value = preview;
     this.$.querySelector("#preview-time").textContent = clock(preview);
-    this.draw(points, light.minute, preview);
+    this.draw(points, light.minute, preview, curve);
     const temperature = light.temperature;
     const temperatureText = typeof temperature === "number" && Number.isFinite(temperature) ?
       ` · ${temperature.toFixed(1)} °C` : "";
@@ -337,7 +341,7 @@ class ReefStudioPanel extends HTMLElement {
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<div class="actions"><small>Kurvenwert um ${clock(preview)} · Sollwert</small></div>
-        ${this.bars(interpolate(points, preview))}` : ""}`;
+        ${this.bars(interpolate(points, preview, curve))}` : ""}`;
     const control = this.$.querySelector("#control");
     const buttons = [
       light.preview && ["preview_cancel", "Timer abbrechen – Tagesprofil fortsetzen"],
@@ -358,14 +362,14 @@ class ReefStudioPanel extends HTMLElement {
     if (curvePreview) curvePreview.disabled = this.busy || !light.local || !light.online || light.group;
   }
 
-  draw(points, now, preview) {
+  draw(points, now, preview, curve) {
     const x = minute => 42 + minute * 668 / 1440;
     const y = level => 170 - level * 1.48;
     // Sample the complete curve instead of just connecting support points.
     // This makes a sinus transition visibly different from a linear ramp.
-    const samples = points.length > 1 ? Array.from({ length: 145 }, (_, index) => {
-      const minute = index * 10;
-      return { minute, levels: interpolate(points, minute % 1440) };
+    const samples = points.length > 1 ? Array.from({ length: 721 }, (_, index) => {
+      const minute = index * 2;
+      return { minute, levels: interpolate(points, minute % 1440, curve) };
     }) : [];
     this.$.querySelector("#chart").innerHTML = `<svg viewBox="0 0 730 200" role="img" aria-label="Tagesverlauf der LED-Kanäle von 0 bis 24 Uhr">
       <defs><linearGradient id="night"><stop stop-color="#122843"/><stop offset=".55" stop-color="#213c5a"/><stop offset="1" stop-color="#122843"/></linearGradient></defs>
@@ -407,7 +411,7 @@ class ReefStudioPanel extends HTMLElement {
     if (newButton) newButton.onclick = () => {
       this.reset();
       const zero = light.labels.map(() => 0);
-      this.draft = programs ? { name: "", points: [0, 540, 600, 1140, 1200].map(minute => ({ minute, levels: [...zero] })) } :
+      this.draft = programs ? { name: "", curve: "sine", points: [0, 540, 600, 1140, 1200].map(minute => ({ minute, levels: [...zero] })) } :
         { name: "", levels: [...zero] };
       this.editor();
       this.update();
@@ -422,6 +426,9 @@ class ReefStudioPanel extends HTMLElement {
         const fit = levels => light.labels.map((_, i) => levels[i] ?? 0);
         if (programs) this.draft.points.forEach(point => { point.levels = fit(point.levels); });
         else this.draft.levels = fit(this.draft.levels);
+        if (programs && !this.draft.curve) {
+          this.draft.curve = this.draft.points.some(point => point.curve === "sine") ? "sine" : "linear";
+        }
       }
       this.editor();
       this.update();
@@ -476,6 +483,7 @@ class ReefStudioPanel extends HTMLElement {
     const node = this.$.querySelector("#draft");
     const point = programs ? item.points[this.point] : null;
     const levels = point?.levels ?? item.levels;
+    if (programs && !item.curve) item.curve = programCurve(item);
     const masterKey = programs ? `point:${this.point}` : "scene";
     if (this.masterKey !== masterKey) {
       this.masterKey = masterKey;
@@ -483,19 +491,18 @@ class ReefStudioPanel extends HTMLElement {
     }
     node.innerHTML = `<div class="edit-grid"><div>
       <label class="field">Name<input id="name" maxlength="64" required value="${escape(item.name)}"></label>
+      ${programs ? `<label class="field">Übergangsform für das gesamte Tagesprofil<select id="program-curve"><option value="linear" ${item.curve === "linear" ? "selected" : ""}>Linear</option><option value="sine" ${item.curve === "sine" ? "selected" : ""}>Sinus, weich</option></select><small>Gilt für alle Übergänge zwischen den Stützpunkten.</small></label>` : ""}
       ${programs ? `<details class="actions"><summary>Rampen-Assistent</summary>
         <div class="form-grid">
           <label class="field">Sonnenaufgang<input id="rise" type="time" value="09:00"></label>
           <label class="field">Hochrampe (Min.)<input id="rise-length" type="number" min="1" max="720" value="60"></label>
           <label class="field">Sonnenuntergang beginnt<input id="set" type="time" value="19:00"></label>
           <label class="field">Runterrampe (Min.)<input id="set-length" type="number" min="1" max="720" value="60"></label>
-          <label class="field">Rampenform<select id="ramp-curve"><option value="linear">Linear</option><option value="sine">Sinus, weich</option></select></label>
         </div><button id="ramp">Rampen mit ausgewähltem Spektrum erzeugen</button>
         <small>Ersetzt die Stützpunkte im Entwurf.</small></details>
         <div class="point-list">${item.points.map((p, index) =>
           `<button data-point="${index}" aria-pressed="${this.point === index}">${clock(p.minute)}</button>`).join("")}</div>
         <div class="row"><label class="field">Zeit des Punkts<input id="point-time" type="time" value="${clock(point.minute)}"></label>
-          <label class="field">Übergang zu diesem Punkt<select id="point-curve"><option value="linear" ${point.curve !== "sine" ? "selected" : ""}>Linear</option><option value="sine" ${point.curve === "sine" ? "selected" : ""}>Sinus, weich</option></select></label>
           <button id="add" ${item.points.length >= 48 ? "disabled" : ""}>+ Punkt</button>
           <button id="remove" ${item.points.length <= 2 ? "disabled" : ""}>Punkt entfernen</button></div>` : ""}
       </div><div><h2>${programs ? "Spektrum am Stützpunkt" : "Spektrum der Szene"}</h2>
@@ -508,6 +515,11 @@ class ReefStudioPanel extends HTMLElement {
         ${this.itemId ? `<button id="save-new">Als neues ${programs ? "Programm" : "Szene"} speichern</button>` : ""}
         <small>„Als neues … speichern“ legt eine unabhängige Kopie in der Bibliothek an.</small></div>`;
     node.querySelector("#name").oninput = event => { item.name = event.target.value; };
+    const programCurve = node.querySelector("#program-curve");
+    if (programCurve) programCurve.onchange = event => {
+      item.curve = event.target.value;
+      this.update();
+    };
     node.querySelectorAll("[data-level]").forEach(input => {
       input.oninput = () => {
         if (input.value === "" || !input.validity.valid) return;
@@ -567,14 +579,10 @@ class ReefStudioPanel extends HTMLElement {
       this.point = item.points.indexOf(point);
       showPoint();
     };
-    node.querySelector("#point-curve").onchange = event => {
-      point.curve = event.target.value;
-      this.update();
-    };
     node.querySelector("#add").onclick = () => {
       let minute = this.preview ?? this.light.minute;
       while (item.points.some(p => p.minute === minute)) minute = (minute + 1) % 1440;
-      const added = { minute, levels: interpolate(item.points, minute), curve: "linear" };
+      const added = { minute, levels: interpolate(item.points, minute, item.curve), curve: "linear" };
       item.points = sorted([...item.points, added]);
       this.point = item.points.indexOf(added);
       showPoint();
@@ -589,7 +597,6 @@ class ReefStudioPanel extends HTMLElement {
       const set = toMinute(node.querySelector("#set").value);
       const up = Number(node.querySelector("#rise-length").value);
       const down = Number(node.querySelector("#set-length").value);
-      const curve = node.querySelector("#ramp-curve").value;
       if (![rise, set, up, down].every(Number.isInteger) || up < 1 || up > 720 || down < 1 || down > 720 ||
           rise + up >= set || set + down >= 1440) {
         this.status("Die Rampen müssen am selben Tag liegen und dürfen sich nicht überschneiden.");
@@ -598,9 +605,9 @@ class ReefStudioPanel extends HTMLElement {
       const zero = levels.map(() => 0);
       item.points = [
         { minute: rise, levels: [...zero], curve: "linear" },
-        { minute: rise + up, levels: [...levels], curve },
+        { minute: rise + up, levels: [...levels], curve: "linear" },
         { minute: set, levels: [...levels], curve: "linear" },
-        { minute: set + down, levels: [...zero], curve },
+        { minute: set + down, levels: [...zero], curve: "linear" },
       ];
       this.point = 1;
       this.status("");
