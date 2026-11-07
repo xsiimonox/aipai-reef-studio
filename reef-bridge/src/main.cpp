@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
@@ -14,13 +15,15 @@ Preferences prefs;
 DynamicJsonDocument config(16384);
 String token, apPassword, events[80], lastError;
 unsigned eventCount = 0;
-uint32_t lastOutput = 0, overrideEnd = 0, lastReconnect = 0;
+uint32_t lastOutput = 0, overrideEnd = 0, lastReconnect = 0, lastUpdateCheck = 0;
 String mode = "schedule";
 int overrideLevels[8] = {}, sent[8] = {};
 float temperature = NAN;
-bool lampOnline = false, forceOutput = true;
+bool lampOnline = false, forceOutput = true, updateAvailable = false;
+String latestVersion, updateUrl;
 const char* codes[] = {"w", "b", "r", "g", "b2", "p", "uv", "wm"};
 const char* defaultApPassword = "ReefBridge2026!";
+const char* updateManifestUrl = "https://xsiimonox.github.io/aipai-reef-studio/bridge-update.json";
 
 bool expired(uint32_t deadline) { return int32_t(millis() - deadline) >= 0; }
 void logEvent(String text) {
@@ -34,6 +37,37 @@ String randomSecret() {
   return String(buf);
 }
 int channels() { return config["channels"] | 6; }
+int compareVersion(const String& a, const String& b) {
+  int ai = 0, bi = 0;
+  for (int part = 0; part < 3; part++) {
+    int ae = a.indexOf('.', ai), be = b.indexOf('.', bi);
+    int an = a.substring(ai, ae < 0 ? a.length() : ae).toInt();
+    int bn = b.substring(bi, be < 0 ? b.length() : be).toInt();
+    if (an != bn) return an < bn ? -1 : 1;
+    ai = ae < 0 ? a.length() : ae + 1;
+    bi = be < 0 ? b.length() : be + 1;
+  }
+  return 0;
+}
+void checkForUpdate() {
+  lastUpdateCheck = millis();
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClientSecure client; client.setInsecure();
+  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(4000);
+  if (!http.begin(client, updateManifestUrl)) return;
+  int status = http.GET();
+  String body = status == 200 ? http.getString() : "";
+  http.end();
+  if (status != 200) { logEvent("Update check unavailable (HTTP " + String(status) + ")"); return; }
+  DynamicJsonDocument update(1024);
+  if (deserializeJson(update, body)) { logEvent("Update manifest is invalid"); return; }
+  String version = update["version"] | "";
+  if (version.isEmpty()) { logEvent("Update manifest has no version"); return; }
+  latestVersion = version; updateUrl = update["installer_url"] | "";
+  bool wasAvailable = updateAvailable;
+  updateAvailable = compareVersion(BRIDGE_VERSION, latestVersion) < 0;
+  if (updateAvailable && !wasAvailable) logEvent("Firmware update available: v" + latestVersion);
+}
 void saveConfig() {
   String json; serializeJson(config, json); prefs.putString("config", json);
 }
@@ -202,6 +236,9 @@ void setup() {
     doc["remaining_seconds"] = overrideEnd && !expired(overrideEnd) ? (overrideEnd - millis() + 999) / 1000 : 0;
     if (isfinite(temperature)) doc["temperature"] = temperature;
     doc["error"] = lastError; doc["config"].set(config.as<JsonObject>());
+    JsonObject update = doc.createNestedObject("update");
+    update["available"] = updateAvailable; update["latest"] = latestVersion;
+    update["installer_url"] = updateUrl;
     JsonArray values = doc.createNestedArray("sent"); for (int i=0;i<channels();i++) values.add(sent[i]);
     JsonArray log = doc.createNestedArray("log"); unsigned start = eventCount > 80 ? eventCount-80 : 0;
     for (unsigned i=start;i<eventCount;i++) log.add(events[i%80]);
@@ -248,6 +285,7 @@ void loop() {
     static bool mdns=false; if(!mdns) mdns=MDNS.begin("reefbridge");
     // Setup AP shuts down after the first successful station connection.
     static bool apStopped=false; if(!apStopped) { WiFi.softAPdisconnect(true); apStopped=true; }
+    if (!lastUpdateCheck || millis() - lastUpdateCheck >= 6UL * 60UL * 60UL * 1000UL) checkForUpdate();
   } else if(millis()-lastReconnect>30000) { lastReconnect=millis(); WiFi.reconnect(); }
   if (forceOutput || millis()-lastOutput>=30000 || (overrideEnd && expired(overrideEnd))) {
     forceOutput=false; lastOutput=millis(); output();

@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant erforderlich. Optional kann Home Assistant über die lokale Bridge-API steuern. Dies ist **Version 0.1.0, ein experimenteller Prototyp**. Kompilieren und simulierte Prüfungen ersetzen keinen Dauertest am echten ESP32 und der Lampe.
+Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant erforderlich. Optional kann Home Assistant über die lokale Bridge-API steuern. Dies ist **Version 0.1.1, ein experimenteller Prototyp**. Kompilieren und simulierte Prüfungen ersetzen keinen Dauertest am echten ESP32 und der Lampe.
 
 ![Architektur und Fallback](docs/architecture.svg)
 
@@ -20,9 +20,10 @@ Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant er
 - Gerätename/IP, Kanalprofil, Seriennummer-Prüfung, POSIX-Zeitzone mit Sommerzeit, NTP, Temperatur und Diagnoseprotokoll.
 - Programme und WLAN bleiben im Flash; nach Neustart läuft das Tagesprogramm weiter, sobald eine gültige Uhrzeit vorliegt. Temporäre/manuelle Overrides werden beim Neustart aufgehoben.
 - Weboberfläche liegt vollständig in der Firmware; Backup/Import als JSON.
+- Automatische Update-Suche: Nach erfolgreicher WLAN-Verbindung und anschließend alle sechs Stunden prüft die Bridge die veröffentlichte Bridge-Firmware. Ein Hinweis mit Link zum Browser-Installer erscheint im Dashboard; ein Flash-Vorgang geschieht erst nach bewusster Bestätigung.
 - Home Assistant steuert über eine Lease: spätestens 90 Sekunden nach der letzten Bestätigung übernimmt das lokale Tagesprogramm.
 
-Mehrere Programmbibliotheken, Lampengruppen, OTA, automatische Suche, HA-Autodiscovery und die vollständige Reef-Studio-HA-Oberfläche sind noch **nicht** enthalten. Die neue Bridge-Oberfläche ist bewusst ein eigener erster Implementierungsstand.
+Mehrere Programmbibliotheken, Lampengruppen, OTA-Installation, automatische Lampensuche, HA-Autodiscovery und die vollständige Reef-Studio-HA-Oberfläche sind noch **nicht** enthalten. Die neue Bridge-Oberfläche ist bewusst ein eigener erster Implementierungsstand.
 
 ## Hardware
 
@@ -95,7 +96,7 @@ reef_bridge_control_url: http://192.168.178.50/api/control
 reef_bridge_authorization: 'Bearer HIER_DEN_API_TOKEN_EINTRAGEN'
 ```
 
-4. HA-Konfiguration prüfen, neu starten. Modussensor und Helfer erscheinen. Bei acht Kanälen die HA-Spektrum-Liste auf acht Zahlen erweitern.
+4. HA-Konfiguration prüfen, neu starten. Modussensor und Helfer erscheinen. Das Attribut `update` des Modussensors enthält den automatischen Update-Status. Bei acht Kanälen die HA-Spektrum-Liste auf acht Zahlen erweitern.
 5. „Reef Bridge durch HA steuern“ einschalten: HA erneuert alle 30 Sekunden den Spektrum-Befehl mit 90 Sekunden Gültigkeit. Ausschalten kehrt sofort zum Bridge-Tagesprofil zurück. Ein HA-Ausfall führt nach maximal 90 Sekunden plus HTTP-Laufzeit zum lokalen Programm zurück.
 
 Ein dauerhaft manuell aktivierter Bridge-Modus lehnt HA-Leases mit HTTP 409 ab; zuerst „Tagesprofil fortsetzen“ drücken. Ein HA-Tagesprogramm kann später die Helferwerte zeitgesteuert verändern. Das Bridge-Tagesprofil ist das lokal hinterlegte Fallback-Profil, es wird nicht automatisch aus der alten HA-Integration importiert.
@@ -106,7 +107,7 @@ Alle `/api/*`-Aufrufe brauchen `Authorization: Bearer TOKEN`. HTTP nur im vertra
 
 | Methode / Pfad | Funktion |
 | --- | --- |
-| GET `/api/status` | Version, Modus, Restzeit, Temperatur, zuletzt gesendete Pegel, Konfiguration, Log |
+| GET `/api/status` | Version, Modus, Restzeit, Temperatur, Update-Status, zuletzt gesendete Pegel, Konfiguration, Log |
 | POST `/api/wifi` | `{ "ssid": "WLAN", "password": "…" }` |
 | POST `/api/config` | Vollständige Konfiguration mit IP, serial, channels, timezone, points und scenes |
 | POST `/api/control` | `{ "action": "preview", "seconds": 300, "levels": [10,40,0,0,70,5] }` |
@@ -123,7 +124,7 @@ pio run --target upload --upload-port /dev/cu.usbserial-0001
 pio device monitor --baud 115200
 ```
 
-Die Weboberfläche wird beim Build eingebettet. GitHub Actions baut die Firmware, erzeugt ein Factory-Abbild und veröffentlicht den Web-Installer mit GitHub Pages. Versionen für die Bridge werden unabhängig von der HA-Integration gepflegt.
+Die Weboberfläche wird beim Build eingebettet. GitHub Actions baut die Firmware, erzeugt ein Factory-Abbild und veröffentlicht den Web-Installer samt öffentlicher Versionsdatei mit GitHub Pages. Versionen für die Bridge werden unabhängig von der HA-Integration gepflegt.
 
 Vor regulärem Betrieb testen: Seriennummer-Sperre, sechs/acht Kanäle, Tageswechsel, NTP nach Neustart, Abbruch einer Vorschau, Fallback beim Stoppen von HA, WLAN-Ausfall und mindestens 24 Stunden Dauerbetrieb. Der aktuelle Code wurde noch nicht an einem angeschlossenen ESP32/Lampen-Paar abgenommen. Keine automatischen Schreibtests an einem realen Aquarium.
 

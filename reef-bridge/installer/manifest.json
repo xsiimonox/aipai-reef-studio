@@ -1,6 +1,6 @@
 {
   "name": "AIPAI Reef Bridge (ESP32 WROOM)",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "new_install_prompt_erase": true,
   "builds": [{"chipFamily": "ESP32", "parts": [{"path": "firmware.bin", "offset": 0}]}]
 }

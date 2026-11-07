@@ -16,6 +16,7 @@ rest:
           - clock_valid
           - error
           - version
+          - update
 
 rest_command:
   reef_bridge_control:

@@ -20,10 +20,11 @@ const assert=require('node:assert/strict');
    if(url.pathname==='/api/config')Object.assign(config,body);
    await route.fulfill({json:{ok:true}});return;
   }
-  await route.fulfill({json:{version:'0.1.0',mode,lamp_online:true,clock_valid:true,temperature:38.4,remaining_seconds:0,config,sent:[25,70,3,2,85,12],log:['DEMO · Beispieldaten, keine reale Lampe','Output schedule; observed power=on, mode=0']}});
+  await route.fulfill({json:{version:'0.1.1',mode,lamp_online:true,clock_valid:true,temperature:38.4,remaining_seconds:0,update:{available:false,latest:'0.1.1'},config,sent:[25,70,3,2,85,12],log:['DEMO · Beispieldaten, keine reale Lampe','Output schedule; observed power=on, mode=0']}});
  });
  await page.goto('http://bridge.test/');await page.locator('#token').fill('demo-token');await page.locator('#connect').click();
  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('38.4'));
+ await page.waitForFunction(()=>document.querySelector('#update').textContent.includes('Firmware aktuell: v0.1.1'));
  assert.equal(await page.locator('#channels input').count(),6);
  await page.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Dauerhaft'));
  await page.locator('#resume').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Tagesprogramm'));
