@@ -42,7 +42,7 @@ Der [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) wird aus
 6. Heim-WLAN unter „WLAN einrichten“ speichern. Nach Verbindung schließt das Setup-WLAN. Bridge-IP im Router suchen oder `http://reefbridge.local` versuchen. Bei mehreren Bridges die IP verwenden.
 7. Lampen-IP und **korrekte Seriennummer** eintragen. Kanalprofil wählen, Tagespunkte festlegen und speichern. Der Controller prüft vor jedem Schreibzyklus die Seriennummer.
 
-Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Das Standardpasswort gilt nur, solange noch kein Passwort im Flash gespeichert ist: Bereits eingerichtete Bridges behalten ihr bisheriges Passwort. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
+Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Beim ersten Start dieser Firmwareversion wird auch ein zuvor gespeichertes Setup-Passwort einmalig auf `ReefBridge2026!` aktualisiert. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
 
 ### Terminal-Installer als Alternative
 
