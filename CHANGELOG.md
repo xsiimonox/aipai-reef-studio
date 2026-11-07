@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.21.0] - 2026-11-07
+
+### Changed
+
+- Reef Studio erhält eine ruhigere, Apple-inspirierte Oberfläche mit einheitlichen Feldhöhen, symmetrischen Editor-Spalten, segmentierter Navigation und besser lesbarer Typografie.
+- Beschriftungen und Hilfetexte erklären Bibliothek, Aktivierung, Rampen und Live-Vorschau direkt am jeweiligen Bedienelement. Die Gesamtintensität und lange Lampennamen erhalten mehr Platz.
+- Auf Smartphones stehen Felder und Aktionen übersichtlich untereinander; Gruppenmitglieder sind als große Auswahlflächen bedienbar.
+
 ## [0.20.6] - 2026-11-07
 
 ### Fixed
