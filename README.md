@@ -22,6 +22,14 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 - Eigene IANA-Zeitzone je Lampe mit Sommerzeitkorrektur
 - Live-Anzeige der Tageskurve, Sollwerte und gemeldeten Kanalpegel
 
+## Einblick in Reef Studio
+
+| Tagesprogramm und Live-Pegel | Szenenbibliothek und Schnellwechsel |
+| --- | --- |
+| ![Tagesprogramm mit Spektralkurve und sechs Kanalpegeln](docs/screenshots/reef-studio-dashboard.png) | ![Szenenbibliothek mit Fotoszene, Blaulicht und Wartungslicht](docs/screenshots/reef-studio-scenes.png) |
+
+*Die Screenshots zeigen Beispieldaten; Lampenname, Kanalwerte und Programme stammen nicht aus einem echten Aquarium.*
+
 ## Unterstützte Kanalprofile
 
 | Profil | Kanäle |
@@ -54,7 +62,7 @@ Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwisch
 
 ### Szenen
 
-Szenen speichern ein festes Spektrum. Sie können für 1 bis 180 Minuten gestartet werden. Nach Ablauf übernimmt wieder das aktive Tagesprogramm oder der vorherige Lampenmodus.
+Szenen speichern ein festes Spektrum. Sie können für 1 bis 60 Minuten gestartet oder im manuellen Modus dauerhaft gehalten werden. Nach Ablauf beziehungsweise nach dem Beenden übernimmt wieder das aktive Tagesprogramm oder der vorherige Lampenmodus.
 
 ### Gruppen
 
