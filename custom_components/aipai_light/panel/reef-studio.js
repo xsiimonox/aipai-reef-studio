@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.20.3";
+const REEF_STUDIO_VERSION = "0.20.4";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -108,7 +108,9 @@ class ReefStudioPanel extends HTMLElement {
   queueLivePreview(levels) {
     const light = this.light;
     if (!light || light.group || !light.local || !light.online) return;
-    this.previewLevels = [...levels];
+    // A shared eight-channel MAX profile may be edited from a six-channel
+    // fixture. Preview only the channels physically available on that lamp.
+    this.previewLevels = levels.slice(0, light.labels.length);
     this.previewSeconds = this.kind === "programs" ? 60 : 300;
     clearTimeout(this.previewTimer);
     this.previewTimer = setTimeout(() => this.sendLivePreview(), 180);
@@ -417,7 +419,11 @@ class ReefStudioPanel extends HTMLElement {
       this.itemId = select.value || null;
       if (this.itemId) {
         this.draft = structuredClone(library[this.itemId]);
-        const fit = levels => light.labels.map((_, i) => levels[i] ?? 0);
+        // Keep channels that are unavailable on this fixture intact. A
+        // six-channel lamp can therefore save a MAX profile without silently
+        // discarding its UV and warm-white values. Missing channels are only
+        // zero-filled when editing a smaller profile on a larger fixture.
+        const fit = levels => [...levels, ...Array(Math.max(0, light.labels.length - levels.length)).fill(0)];
         if (programs) this.draft.points.forEach(point => { point.levels = fit(point.levels); });
         else this.draft.levels = fit(this.draft.levels);
       }
@@ -603,7 +609,7 @@ class ReefStudioPanel extends HTMLElement {
     const node = this.$.querySelector("#editor");
     const physical = this.lights.filter(item => !item.group);
     node.innerHTML = `<div class="row spread"><h2>Lampengruppen</h2><button id="new-group" class="primary">+ Gruppe</button></div>
-      <p class="muted">Ein Gruppenprogramm oder eine Gruppenszene startet gleich benannte Einträge auf allen Mitgliedern.</p>
+      <p class="muted">Programme und Szenen stammen aus der gemeinsamen Bibliothek. Gruppen starten den ausgewählten Eintrag auf allen Mitgliedern.</p>
       <div class="point-list">${this.groups.map(group => `<button data-group="${group.group_id}">${escape(group.name)} · ${group.members.length} Lampen</button>`).join("") || '<small>Noch keine Gruppen.</small>'}</div>
       <div id="group-form"></div>`;
     node.querySelector("#new-group").onclick = () => this.renderGroupForm();

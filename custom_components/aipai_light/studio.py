@@ -39,6 +39,20 @@ def validate_levels(value: Any, count: int) -> list[int]:
     return value
 
 
+def validate_profile_levels(value: Any) -> list[int]:
+    """Validate a reusable profile without binding it to one lamp model."""
+    if not isinstance(value, list) or not 1 <= len(value) <= len(ROAD_CODES) or any(
+        type(level) is not int or not 0 <= level <= 100 for level in value
+    ):
+        raise ValueError(f"1 bis {len(ROAD_CODES)} ganzzahlige Kanalwerte zwischen 0 und 100 erwartet.")
+    return value
+
+
+def fit_levels(levels: list[int], count: int) -> list[int]:
+    """Apply a profile to a fixture, zero-filling channels it does not contain."""
+    return [levels[index] if index < len(levels) else 0 for index in range(count)]
+
+
 def validate_item(kind: str, item: dict, count: int) -> dict:
     name = item.get("name", "")
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 64:
@@ -65,6 +79,106 @@ def validate_item(kind: str, item: dict, count: int) -> dict:
     }
 
 
+def validate_library_item(kind: str, item: dict) -> dict:
+    """Validate a shared profile and retain its channel count for other lamps."""
+    name = item.get("name", "")
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 64:
+        raise ValueError("Bitte einen Namen mit 1 bis 64 Zeichen eingeben.")
+    if kind == "scenes":
+        return {"name": name.strip(), "levels": validate_profile_levels(item.get("levels"))}
+    points = item.get("points")
+    if not isinstance(points, list) or not 2 <= len(points) <= 48:
+        raise ValueError("Ein Programm braucht 2 bis 48 Stützpunkte.")
+    validated = []
+    channels = None
+    for point in points:
+        minute = point.get("minute") if isinstance(point, dict) else None
+        if type(minute) is not int or not 0 <= minute < DAY:
+            raise ValueError("Jeder Stützpunkt braucht eine Uhrzeit von 00:00 bis 23:59.")
+        levels = validate_profile_levels(point.get("levels"))
+        if channels is None:
+            channels = len(levels)
+        elif len(levels) != channels:
+            raise ValueError("Alle Stützpunkte eines Programms brauchen dieselbe Kanalanzahl.")
+        validated.append({"minute": minute, "levels": levels, "curve": "linear"})
+    if len({point["minute"] for point in validated}) != len(validated):
+        raise ValueError("Jede Uhrzeit darf nur einmal vorkommen.")
+    return {"name": name.strip(), "points": sorted(validated, key=lambda point: point["minute"])}
+
+
+class ReefLibrary:
+    """One shared program and scene library for every Reef Studio fixture."""
+
+    def __init__(self, hass) -> None:  # noqa: ANN001
+        self.store = Store(hass, 1, f"{DOMAIN}.studio_library")
+        self.data = {"programs": {}, "scenes": {}}
+        self.lock = asyncio.Lock()
+        self.loaded = False
+
+    async def load(self) -> None:
+        async with self.lock:
+            if self.loaded:
+                return
+            stored = await self.store.async_load() or {}
+            self.data = {
+                kind: stored.get(kind, {}) if isinstance(stored.get(kind), dict) else {}
+                for kind in ("programs", "scenes")
+            }
+            self.loaded = True
+
+    async def import_legacy(self, data: dict) -> dict[str, dict[str, str]]:
+        """Import the old per-lamp library once, preserving active references."""
+        await self.load()
+        mapping = {"programs": {}, "scenes": {}}
+        changed = False
+        async with self.lock:
+            for kind in ("programs", "scenes"):
+                for item_id, item in data.get(kind, {}).items():
+                    try:
+                        item = validate_library_item(kind, item)
+                    except (TypeError, ValueError):
+                        continue
+                    target_id = item_id
+                    if target_id in self.data[kind] and self.data[kind][target_id] != item:
+                        target_id = uuid4().hex
+                    mapping[kind][item_id] = target_id
+                    if target_id not in self.data[kind]:
+                        self.data[kind][target_id] = item
+                        changed = True
+            if changed:
+                await self.store.async_save(self.data)
+        return mapping
+
+    async def save_item(self, kind: str, item_id: str | None, item: dict) -> str:
+        await self.load()
+        validated = validate_library_item(kind, item)
+        async with self.lock:
+            if item_id is None and len(self.data[kind]) >= 100:
+                raise ValueError("Maximal 100 Einträge pro Bibliothek.")
+            item_id = item_id or uuid4().hex
+            self.data[kind][item_id] = validated
+            await self.store.async_save(self.data)
+        return item_id
+
+    async def delete_item(self, kind: str, item_id: str) -> None:
+        await self.load()
+        async with self.lock:
+            if item_id not in self.data[kind]:
+                raise ValueError("Der Eintrag wurde bereits gelöscht.")
+            del self.data[kind][item_id]
+            await self.store.async_save(self.data)
+
+
+async def async_get_library(hass) -> ReefLibrary:  # noqa: ANN001
+    key = f"{DOMAIN}_studio_library"
+    library = hass.data.get(key)
+    if library is None:
+        library = ReefLibrary(hass)
+        hass.data[key] = library
+    await library.load()
+    return library
+
+
 class ReefStudio:
     """Persistent library and a serialized controller for one local fixture."""
 
@@ -82,9 +196,21 @@ class ReefStudio:
         self.unsubscribe = None
         self.expiry_cancel = None
         self.closed = False
+        self.library: ReefLibrary | None = None
 
     async def start(self) -> None:
         self.data.update(await self.store.async_load() or {})
+        self.library = await async_get_library(self.hub.hass)
+        if not self.data.get("shared_library_migrated"):
+            mapping = await self.library.import_legacy(self.data)
+            if self.data.get("program") in mapping["programs"]:
+                self.data["program"] = mapping["programs"][self.data["program"]]
+            if self.data.get("scene") and self.data["scene"].get("id") in mapping["scenes"]:
+                self.data["scene"] = self.data["scene"] | {
+                    "id": mapping["scenes"][self.data["scene"]["id"]]
+                }
+            self.data["shared_library_migrated"] = True
+            await self.store.async_save(self.data)
         self._schedule_expiry()
         if self.hub.local:
             self.unsubscribe = async_track_time_change(self.hub.hass, self.tick, second=0)
@@ -113,7 +239,9 @@ class ReefStudio:
                 for hour in range(24)
             ]
         return {
-            **{key: self.data[key] for key in ("programs", "scenes", "program", "scene", "preview")},
+            "programs": self.library.data["programs"] if self.library else {},
+            "scenes": self.library.data["scenes"] if self.library else {},
+            **{key: self.data[key] for key in ("program", "scene", "preview")},
             "serial": self.hub.serial,
             "name": self.hub.display_name,
             "labels": self.hub.labels,
@@ -197,11 +325,13 @@ class ReefStudio:
         if preview:
             target = validate_levels(preview["levels"], self.hub.roads)
         elif scene:
-            target = validate_levels(self.data["scenes"][scene["id"]]["levels"], self.hub.roads)
+            target = fit_levels(
+                validate_library_item("scenes", self.library.data["scenes"][scene["id"]])["levels"], self.hub.roads,
+            )
         elif program:
             now = self.hub._now()
-            validated = validate_item("programs", self.data["programs"][program], self.hub.roads)
-            target = levels_at(validated["points"], now.hour * 60 + now.minute)
+            validated = validate_library_item("programs", self.library.data["programs"][program])
+            target = fit_levels(levels_at(validated["points"], now.hour * 60 + now.minute), self.hub.roads)
 
         async def prepare(body: str) -> list[str]:
             state = parse_readconfig(body)
@@ -251,7 +381,9 @@ class ReefStudio:
             action = msg["action"]
             kind = msg.get("kind", "programs")
             item_id = msg.get("item_id")
-            library = self.data[kind]
+            if self.library is None:
+                raise ValueError("Die gemeinsame Bibliothek wird noch geladen.")
+            library = self.library.data[kind]
             scene = self.data["scene"]
             if action not in ("list",):
                 self.hub.log_activity("Reef-Studio-Aktion", action)
@@ -267,14 +399,18 @@ class ReefStudio:
                     raise ValueError("Bitte zuerst das aktive Programm oder die Szene beenden.")
                 if item_id is not None and item_id not in library:
                     raise ValueError("Der Eintrag wurde bereits gelöscht.")
-                updated = dict(library)
                 if action == "save":
-                    if len(library) >= 100 and item_id is None:
-                        raise ValueError("Maximal 100 Einträge pro Bibliothek.")
-                    updated[item_id or uuid4().hex] = validate_item(kind, msg.get("item", {}), self.hub.roads)
+                    item_id = await self.library.save_item(kind, item_id, msg.get("item", {}))
                 elif item_id is not None:
-                    del updated[item_id]
-                await self.save({kind: updated})
+                    # A shared item may be active on a different lamp too.
+                    if any(
+                        other.data.get("program") == item_id or
+                        (other.data.get("scene") and other.data["scene"].get("id") == item_id)
+                        for other in (getattr(hub, "studio", None) for hub in self.hub.hass.data.get(DOMAIN, {}).values())
+                        if other is not None
+                    ):
+                        raise ValueError("Bitte zuerst das aktive Programm oder die Szene beenden.")
+                    await self.library.delete_item(kind, item_id)
                 if action == "save" and in_use:
                     self.sent = None
                     try:
@@ -307,7 +443,7 @@ class ReefStudio:
                     raise OSError("Die Lampe ist gerade nicht erreichbar.")
                 if item_id not in library:
                     raise ValueError("Bitte einen gespeicherten Eintrag wählen.")
-                validate_item(kind, library[item_id], self.hub.roads)
+                validate_library_item(kind, library[item_id])
                 if kind == "programs":
                     await self.save({"program": item_id, "scene": None, "preview": None})
                 else:
@@ -316,7 +452,7 @@ class ReefStudio:
             elif action == "manual":
                 if kind != "scenes" or item_id not in library:
                     raise ValueError("Bitte eine gespeicherte Szene für den manuellen Modus wählen.")
-                validate_item("scenes", library[item_id], self.hub.roads)
+                validate_library_item("scenes", library[item_id])
                 await self.save({"scene": {"id": item_id, "until": None, "manual": True}, "preview": None})
             elif action == "preview_cancel":
                 # Only stop the temporary view.  Keep the program or scene

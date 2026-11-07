@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.4] - 2026-11-07
+
+### Changed
+
+- Programme und Szenen verwenden jetzt eine gemeinsame, Home-Assistant-weite Reef-Studio-Bibliothek. Jedes Profil ist dadurch an jeder Lampe verfügbar und kann auch von Lampengruppen gestartet werden.
+- Bestehende pro-Lampe-Bibliotheken werden beim ersten Laden automatisch und ohne Verlust in die gemeinsame Bibliothek übernommen.
+- Ein 8-Kanal-MAX-Profil lässt sich auf einer 6-Kanal-Lampe verwenden (UV/Warmweiß werden dort ignoriert); fehlende MAX-Kanäle eines 6-Kanal-Profils bleiben auf einer 8-Kanal-Lampe bei 0 %.
+
 ## [0.20.3] - 2026-11-07
 
 ### Fixed
