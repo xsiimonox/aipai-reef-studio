@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import (
     async_track_point_in_time,
@@ -236,6 +237,16 @@ class AipaiLightHub:
     @property
     def labels(self) -> list[str]:
         return self.state.labels
+
+    @property
+    def display_name(self) -> str:
+        """Resolve HA's current device name rather than the setup-time name."""
+        device = dr.async_get(self.hass).async_get_device(
+            identifiers={(DOMAIN, self.serial)}
+        )
+        if device is not None:
+            return device.name_by_user or device.name or self.name
+        return self.name
 
     @property
     def device_info(self) -> DeviceInfo:

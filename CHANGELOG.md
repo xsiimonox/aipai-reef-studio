@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.2] - 2026-11-07
+
+### Fixed
+
+- Reef Studio übernimmt aktuelle Gerätenamen aus der Home-Assistant-Geräteregistrierung. Umbenannte Lampen erscheinen beim nächsten Panel-Refresh auch in der Lampen- und Gruppenauswahl mit dem neuen Namen; Gruppenmitgliedschaften bleiben über die Seriennummer erhalten.
+
 ## [0.20.1] - 2026-11-07
 
 ### Changed

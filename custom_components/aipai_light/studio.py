@@ -115,7 +115,7 @@ class ReefStudio:
         return {
             **{key: self.data[key] for key in ("programs", "scenes", "program", "scene", "preview")},
             "serial": self.hub.serial,
-            "name": self.hub.name,
+            "name": self.hub.display_name,
             "labels": self.hub.labels,
             "local": self.hub.local,
             "online": self.hub.available and self.hub.has_state,

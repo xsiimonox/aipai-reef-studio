@@ -80,14 +80,14 @@ class ReefGroups:
             raise ValueError("Nicht alle Gruppenlampen sind geladen.")
         for studio in members:
             if not studio.hub.local or not studio.hub.available:
-                raise OSError(f"{studio.hub.name} ist nicht lokal erreichbar.")
+                raise OSError(f"{studio.hub.display_name} ist nicht lokal erreichbar.")
         if action in ("activate",):
             matches = []
             for studio in members:
                 match = next((item_id for item_id, item in studio.data[kind].items()
                               if item["name"] == item_name), None)
                 if match is None:
-                    raise ValueError(f"{studio.hub.name} hat keinen Eintrag „{item_name}“.")
+                    raise ValueError(f"{studio.hub.display_name} hat keinen Eintrag „{item_name}“.")
                 matches.append(match)
             for studio, item_id in zip(members, matches, strict=True):
                 await studio.command({"action": action, "kind": kind, "item_id": item_id,
