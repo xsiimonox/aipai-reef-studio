@@ -310,6 +310,10 @@ class ReefStudio:
                     raise ValueError("Bitte eine gespeicherte Szene für den manuellen Modus wählen.")
                 validate_item("scenes", library[item_id], self.hub.roads)
                 await self.save({"scene": {"id": item_id, "until": None, "manual": True}, "preview": None})
+            elif action == "preview_cancel":
+                # Only stop the temporary view.  Keep the program or scene
+                # underneath intact so the normal profile resumes immediately.
+                await self.save({"preview": None})
             elif action == "resume":
                 await self.save({"scene": None, "preview": None})
             else:
@@ -332,7 +336,7 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "manual", "preview", "resume", "release", "group_save", "group_delete",
+        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),

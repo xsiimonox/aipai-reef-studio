@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.7] - 2026-11-07
+
+### Fixed
+
+- Laufende Tageszeit-Vorschauen haben einen eigenen Abbruchknopf. Er beendet ausschließlich den Timer und setzt sofort das darunter aktive Tagesprogramm fort.
+
 ## [0.18.6] - 2026-11-07
 
 ### Fixed

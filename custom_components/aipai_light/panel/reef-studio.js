@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.6";
+const REEF_STUDIO_VERSION = "0.18.7";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -332,8 +332,9 @@ class ReefStudioPanel extends HTMLElement {
         ${this.bars(interpolate(points, preview))}` : ""}`;
     const control = this.$.querySelector("#control");
     const buttons = [
+      light.preview && ["preview_cancel", "Timer abbrechen – Tagesprofil fortsetzen"],
       scene && ["resume", "Szene abbrechen – Tagesprogramm fortsetzen"],
-      (light.program || light.scene || light.preview || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
+      !light.preview && (light.program || light.scene || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
     const signature = JSON.stringify(buttons);
     if (control.dataset.buttons !== signature) {
