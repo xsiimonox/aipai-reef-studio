@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.5] - 2026-11-07
+
+### Added
+
+- Home Assistant erhält für jede AIPAI-Lampe eine native Update-Entität „Reef Studio update“. Sie prüft die neuesten veröffentlichten GitHub-Releases alle 30 Minuten und meldet verfügbare HACS-Updates unter **Einstellungen → System → Updates**, unabhängig davon, wann HACS seine Repository-Informationen aktualisiert.
+
+### Changed
+
+- Die Versionsanzeige in Reef Studio prüft ebenfalls den neuesten veröffentlichten GitHub-Release statt des veränderlichen `main`-Branches und aktualisiert ihren Cache alle 30 Minuten.
+
 ## [0.20.4] - 2026-11-07
 
 ### Changed

@@ -52,6 +52,13 @@ Die Firmwarekennung allein ist nicht immer zuverlässig. Die tatsächliche Kanal
 
 Danach erscheint **Reef Studio** für Administratoren in der Seitenleiste.
 
+Reef Studio legt außerdem eine native Entität **Reef Studio update** an. Sie
+prüft veröffentlichte GitHub-Releases alle 30 Minuten und zeigt verfügbare
+Versionen unter **Einstellungen → System → Updates** an. Der Download selbst
+erfolgt weiterhin über HACS. HACS aktualisiert seine Repository-Informationen
+eigenständig nach seinem Zeitplan; eine Integration kann diesen HACS-Refresh
+nicht erzwingen.
+
 ## Installation ohne HACS
 
 Den Ordner `custom_components/aipai_light` nach `/config/custom_components/aipai_light` kopieren und Home Assistant neu starten.
@@ -60,7 +67,7 @@ Den Ordner `custom_components/aipai_light` nach `/config/custom_components/aipai
 
 ### Tagesprogramme
 
-Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwischen zwei Punkten kann der Übergang linear oder sinusförmig verlaufen. Der Rampen-Assistent erzeugt aus Sonnenaufgang, Hochrampe, Sonnenuntergang und Runterrampe direkt ein vollständiges Programm. Erst **Programm aktivieren** übernimmt es für die Lampe.
+Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwischen zwei Punkten verläuft der Übergang linear. Der Rampen-Assistent erzeugt aus Sonnenaufgang, Hochrampe, Sonnenuntergang und Runterrampe direkt ein vollständiges Programm. Erst **Programm aktivieren** übernimmt es für die Lampe. Programme und Szenen liegen in einer gemeinsamen Bibliothek und sind daher an jeder eingerichteten Lampe verfügbar.
 
 ### Szenen
 
@@ -68,7 +75,7 @@ Szenen speichern ein festes Spektrum. Sie können für 1 bis 60 Minuten gestarte
 
 ### Gruppen
 
-Eine Gruppe enthält mindestens zwei Lampen. Gruppeneinträge starten Programme oder Szenen mit demselben Namen auf allen Mitgliedern. Dadurch können Lampen mit unterschiedlichen Kanalprofilen zusammen arbeiten, ohne nicht vorhandene Kanäle anzusprechen.
+Eine Gruppe kann eine oder mehrere Lampen enthalten. Gruppeneinträge starten Programme oder Szenen auf allen Mitgliedern. Dadurch können Lampen mit unterschiedlichen Kanalprofilen zusammen arbeiten, ohne nicht vorhandene Kanäle anzusprechen.
 
 ## Entwicklung und Releases
 
