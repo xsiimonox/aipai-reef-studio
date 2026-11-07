@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.2] - 2026-11-07
+
+### Fixed
+
+- Die Statuskarte „Aktiver Lichtmodus“ aktualisiert sich bei jedem Moduswechsel sofort, ohne dass Reef Studio neu geöffnet werden muss.
+
 ## [0.18.1] - 2026-11-07
 
 ### Added

@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.1";
+const REEF_STUDIO_VERSION = "0.18.2";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -230,7 +230,7 @@ class ReefStudioPanel extends HTMLElement {
         `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}</option>`).join("")}</select>` : ""}
       </header><div id="notice" class="notice" role="status"></div>
       ${this.updateInfo?.available ? `<div class="update-note" role="status">Update verfügbar: <strong>v${escape(this.updateInfo.latest)}</strong> (installiert: v${escape(this.updateInfo.current)}). Bitte über HACS aktualisieren.</div>` : ""}
-      ${light ? `<section class="mode-note" aria-live="polite"><span>Aktiver Lichtmodus</span><strong>${escape(mode)}</strong></section>` : ""}
+      ${light ? `<section class="mode-note" aria-live="polite"><span>Aktiver Lichtmodus</span><strong id="active-mode">${escape(mode)}</strong></section>` : ""}
       ${light ? `<div class="grid"><section class="panel">
         <div class="row spread"><h2 id="curve-title">Tagesverlauf</h2><span id="now" class="pill"></span></div>
         <div id="chart" class="timeline"></div>
@@ -288,6 +288,7 @@ class ReefStudioPanel extends HTMLElement {
   update() {
     const light = this.light;
     if (!light || !this.$.querySelector("#chart")) return;
+    this.$.querySelector("#active-mode").textContent = this.activeMode(light);
     const program = light.programs[light.program];
     const scene = light.scenes[light.scene?.id];
     const sceneRemaining = this.secondsUntil(light.scene?.until, light);
