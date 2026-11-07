@@ -127,6 +127,7 @@ class ReefStudio:
             "now_epoch": dt_util.utcnow().timestamp(),
             "mode": state.mode,
             "power": state.power,
+            "temperature": state.temperature,
             "reported": state.road_val_pct[:self.hub.roads] if self.hub.has_state else [],
             "firmware_points": firmware_points,
             "sent": self.sent,

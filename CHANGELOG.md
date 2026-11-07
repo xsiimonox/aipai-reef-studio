@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.19.1] - 2026-11-07
+
+### Added
+
+- Reef Studio zeigt die von der Lampe gemeldete interne Gerätetemperatur direkt neben dem Erreichbarkeitsstatus an.
+
 ## [0.19.0] - 2026-11-07
 
 ### Added

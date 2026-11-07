@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.19.0";
+const REEF_STUDIO_VERSION = "0.19.1";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -325,7 +325,10 @@ class ReefStudioPanel extends HTMLElement {
     this.$.querySelector("#preview").value = preview;
     this.$.querySelector("#preview-time").textContent = clock(preview);
     this.draw(points, light.minute, preview);
-    this.$.querySelector("#online").textContent = light.online ? "Erreichbar" : "Offline";
+    const temperature = light.temperature;
+    const temperatureText = typeof temperature === "number" && Number.isFinite(temperature) ?
+      ` · ${temperature.toFixed(1)} °C` : "";
+    this.$.querySelector("#online").textContent = light.online ? `Erreichbar${temperatureText}` : "Offline";
     const actual = light.online ? (light.sent ?? light.reported) : null;
     const label = light.sent ? "Zuletzt per HTTP bestätigt" :
       light.mode === "1" ? "Manuelle Pegel aus der Firmware" : "Von der Lampe gemeldet";
