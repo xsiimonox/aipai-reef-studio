@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.7";
+const REEF_STUDIO_VERSION = "0.19.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -39,6 +39,7 @@ const STYLE = `
   .notice{color:#ffd2a0;margin:8px 0;min-height:1.35em}.notice:empty{margin:0;min-height:0}
   .update-note{margin:0 0 15px;padding:11px 14px;border:1px solid #76e8e0;border-radius:12px;background:#123d47;color:#dcfffb}
   .mode-note{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 15px;padding:12px 15px;border:1px solid #3e6682;border-radius:14px;background:#102c43}.mode-note span{color:#a5b7cb;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}.mode-note strong{color:#a5fff2;text-align:right}
+  .log{max-height:480px;overflow:auto;margin:14px 0 0;padding:0;list-style:none;border:1px solid #29405b;border-radius:12px}.log li{padding:10px 12px;border-bottom:1px solid #29405b}.log li:last-child{border:0}.log time{display:block;color:#8eabc4;font-size:.77rem}.log .warning{color:#ffd580}.log .error{color:#ffabb2}
   .legend{font-size:.78rem;margin-top:5px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:5px}
   svg{width:100%;display:block;overflow:visible}.timeline{margin-top:6px}
   .scrub{display:flex;align-items:center;gap:10px;margin-top:4px}.scrub input{width:100%}
@@ -155,7 +156,10 @@ class ReefStudioPanel extends HTMLElement {
   receive(lights) {
     const payload = Array.isArray(lights) ? { lights, groups: [] } : lights;
     const signature = list => JSON.stringify(list.map(
-      light => [light.serial, light.name, light.labels, light.programs, light.scenes, light.local]
+      light => [
+        light.serial, light.name, light.labels, light.programs, light.scenes, light.local,
+        light.program, light.scene, light.preview, light.activity,
+      ]
     ));
     const changed = signature([...payload.lights, ...payload.groups]) !== signature(this.lights) ||
       JSON.stringify(payload.groups) !== JSON.stringify(this.groups);
@@ -245,7 +249,8 @@ class ReefStudioPanel extends HTMLElement {
       </section></div>
       <div class="tabs"><button data-tab="programs" aria-pressed="${this.kind === "programs"}">Tagesprogramme</button>
       <button data-tab="scenes" aria-pressed="${this.kind === "scenes"}">Szenen</button>
-      <button data-tab="groups" aria-pressed="${this.kind === "groups"}">Gruppen</button></div>
+      <button data-tab="groups" aria-pressed="${this.kind === "groups"}">Gruppen</button>
+      <button data-tab="diagnostics" aria-pressed="${this.kind === "diagnostics"}">Diagnose</button></div>
       <section class="panel editor" id="editor"></section>` :
       '<section class="panel empty">Sobald eine AIPAI-Lampe eingerichtet ist, erscheint sie hier.</section>'}
       </div></main>`;
@@ -375,6 +380,7 @@ class ReefStudioPanel extends HTMLElement {
 
   editor() {
     const light = this.light;
+    if (this.kind === "diagnostics") return this.diagnosticsEditor();
     if (this.kind === "groups") return this.groupEditor();
     const programs = this.kind === "programs";
     const isGroup = light.group;
@@ -442,6 +448,24 @@ class ReefStudioPanel extends HTMLElement {
       };
     }
     if (this.draft) this.renderDraft(programs);
+  }
+
+  diagnosticsEditor() {
+    const node = this.$.querySelector("#editor");
+    const events = [...(this.light.activity || [])].reverse();
+    const text = events.map(event => `[${event.at}] ${event.level.toUpperCase()} · ${event.event}${event.detail ? " — " + event.detail : ""}`).join("\n");
+    node.innerHTML = `<div class="row spread"><div><h2>Diagnoseprotokoll</h2><p class="muted">Die letzten ${events.length} Ereignisse dieser Home-Assistant-Sitzung. Besonders wichtig sind Warnungen zu power=off, Verbindungsabbrüchen und Ausgabefehlern.</p></div>
+      <button id="copy-log" ${events.length ? "" : "disabled"}>Protokoll kopieren</button></div>
+      ${events.length ? `<ul class="log">${events.map(event => `<li class="${escape(event.level)}"><time>${escape(event.at)}</time><strong>${escape(event.event)}</strong>${event.detail ? `<br><small>${escape(event.detail)}</small>` : ""}</li>`).join("")}</ul>` : '<p class="muted">Noch keine Ereignisse protokolliert.</p>'}`;
+    const copy = node.querySelector("#copy-log");
+    if (copy) copy.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        this.status("Diagnoseprotokoll wurde in die Zwischenablage kopiert.");
+      } catch (_error) {
+        this.status("Kopieren nicht möglich – bitte das Protokoll manuell markieren.");
+      }
+    };
   }
 
   renderDraft(programs) {

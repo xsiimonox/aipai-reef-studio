@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.19.0] - 2026-11-07
+
+### Added
+
+- Diagnose-Tab in Reef Studio mit kopierbarem Ereignisprotokoll. Er zeichnet Lampenstatus- und Moduswechsel, insbesondere `power=off`, lokale Verbindungsabbrüche, Wiederverbindungen, Reef-Studio-Aktionen und Ausgabefehler auf.
+
 ## [0.18.7] - 2026-11-07
 
 ### Fixed

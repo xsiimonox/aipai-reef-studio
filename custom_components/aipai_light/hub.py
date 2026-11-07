@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -48,6 +49,9 @@ class AipaiLightHub:
         # Friendly device name (from the config flow). The user can still rename
         # the device in the HA UI afterwards - that override wins in the registry.
         self.name = (name or "").strip() or f"AIPAI Light {serial}"
+        # Small in-memory flight recorder for Reef Studio diagnostics. Keeping
+        # this at the hub catches state/connection events even outside the UI.
+        self.activity = deque(maxlen=120)
         self._poll_interval = max(10, int(poll_interval))
         self._connected = False
         self._last_reply = 0.0  # monotonic time of the last device reply
@@ -123,6 +127,13 @@ class AipaiLightHub:
 
     def register_entity(self, entity: Any) -> None:
         self._entities.append(entity)
+
+    def log_activity(self, event: str, detail: str = "", level: str = "info") -> None:
+        """Add a user-readable diagnostic event (never contains credentials)."""
+        self.activity.append({
+            "at": dt_util.utcnow().isoformat(), "level": level,
+            "event": event, "detail": detail,
+        })
 
     async def async_connect(self) -> None:
         await self.hass.async_add_executor_job(self.client.connect)
@@ -993,6 +1004,12 @@ class AipaiLightHub:
     def _handle_connection_change(self, connected: bool) -> None:
         was_connected = self._connected
         self._connected = connected
+        if connected != was_connected:
+            self.log_activity(
+                "Verbindung hergestellt" if connected else "Verbindung verloren",
+                "Lokale HTTP-Antworten verfügbar" if connected else "Keine Antwort der Lampe",
+                "info" if connected else "warning",
+            )
         self.hass.loop.call_soon_threadsafe(self._notify)
         if connected and not was_connected:
             # A light that just came back (e.g. after a power blip) has no
@@ -1016,6 +1033,7 @@ class AipaiLightHub:
 
         if msg_type == "readconfig":
             first = not self.has_state
+            previous = self.state if self.has_state else None
             state = parse_readconfig(msg)
             # The A8SE8 controller identifier also appears on six-channel
             # fixtures.  Keep all firmware state internally, but expose only
@@ -1025,6 +1043,16 @@ class AipaiLightHub:
             )
             self.state = state
             self.has_state = True
+            if first:
+                self.log_activity("Status empfangen", f"power={state.power}, mode={state.mode}")
+            elif previous and previous.power != state.power:
+                self.log_activity(
+                    "Lampenstatus geändert",
+                    f"power: {previous.power} → {state.power} (mode={state.mode})",
+                    "warning" if state.power == "off" else "info",
+                )
+            elif previous and previous.mode != state.mode:
+                self.log_activity("Lampenmodus geändert", f"mode: {previous.mode} → {state.mode}")
             # Resize live arrays to match the resolved channel count.
             if len(self.channels) != state.roads:
                 self.channels = [0] * state.roads
@@ -1092,9 +1120,11 @@ class AipaiLightHub:
 
         now = dt_util.utcnow()
         if not now_available:
+            self.log_activity("Lampe nicht erreichbar", "Antwort-Timeout überschritten", "warning")
             self.dropouts.record_offline(now)
             self._schedule_dropout_announce()
         else:
+            self.log_activity("Lampe wieder erreichbar", "Antworten wieder empfangen")
             self.dropouts.record_online(now)
             self._cancel_dropout_timer()
             if self._dropout_active:

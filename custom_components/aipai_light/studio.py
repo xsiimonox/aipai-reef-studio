@@ -133,6 +133,7 @@ class ReefStudio:
             "sent_at": self.sent_at,
             "error": self.error,
             "restoring": bool(self.data["restore"] and not (self.data["program"] or self.data["scene"])),
+            "activity": list(self.hub.activity),
         }
 
     async def save(self, changes: dict) -> None:
@@ -177,6 +178,7 @@ class ReefStudio:
             except (OSError, ValueError) as err:
                 self.sent = None
                 self.error = str(err)
+                self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
 
     async def update_output(self) -> None:
         preview = self.data["preview"]
@@ -253,6 +255,8 @@ class ReefStudio:
             item_id = msg.get("item_id")
             library = self.data[kind]
             scene = self.data["scene"]
+            if action not in ("list",):
+                self.hub.log_activity("Reef-Studio-Aktion", action)
             in_use = item_id is not None and (
                 self.data["program"] == item_id or (scene and scene["id"] == item_id)
             )
@@ -279,6 +283,7 @@ class ReefStudio:
                         await self.update_output()
                     except (OSError, ValueError) as err:
                         self.error = str(err)
+                        self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                         raise
                 return
             if not self.hub.local:
@@ -292,7 +297,12 @@ class ReefStudio:
                     "preview": {"levels": levels, "until": dt_util.utcnow().timestamp() + preview_seconds},
                 })
                 self.sent = None
-                await self.update_output()
+                try:
+                    await self.update_output()
+                except (OSError, ValueError) as err:
+                    self.error = str(err)
+                    self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                    raise
                 return
             if action == "activate":
                 if not self.hub.has_state or not self.hub.available:
@@ -323,6 +333,7 @@ class ReefStudio:
                 await self.update_output()
             except (OSError, ValueError) as err:
                 self.error = str(err)
+                self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                 raise
 
 
