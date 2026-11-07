@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.0] - 2026-11-07
+
+### Added
+
+- „Manueller Modus aktivieren“ hält eine gespeicherte Szene dauerhaft, bis sie über „Szene abbrechen – Tagesprogramm fortsetzen“ beendet wird. Zeitlich begrenzte Szenen bleiben weiterhin über die Laufzeit-Auswahl verfügbar.
+
+### Changed
+
+- Die Live-Vorschau beim Bearbeiten eines Tagesprogramms endet nach einer Minute und kehrt dann zum Tagesprofil zurück. Beim Bearbeiten einer Szene bleibt die Vorschau fünf Minuten aktiv.
+
 ## [0.17.4] - 2026-11-07
 
 ### Added

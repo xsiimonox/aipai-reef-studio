@@ -96,6 +96,7 @@ class ReefStudioPanel extends HTMLElement {
     const light = this.light;
     if (!light || light.group || !light.local || !light.online) return;
     this.previewLevels = [...levels];
+    this.previewSeconds = this.kind === "programs" ? 60 : 300;
     clearTimeout(this.previewTimer);
     this.previewTimer = setTimeout(() => this.sendLivePreview(), 180);
   }
@@ -111,6 +112,7 @@ class ReefStudioPanel extends HTMLElement {
     try {
       const data = await this._hass.callWS({
         type: "aipai_light/studio", action: "preview", serial: this.serial, levels,
+        preview_seconds: this.previewSeconds,
       });
       if (this.isConnected) this.receive(data);
     } catch (error) {
@@ -287,7 +289,7 @@ class ReefStudioPanel extends HTMLElement {
     const label = light.sent ? "Zuletzt per HTTP bestätigt" :
       light.mode === "1" ? "Manuelle Pegel aus der Firmware" : "Von der Lampe gemeldet";
     this.$.querySelector("#live").innerHTML = `
-      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens 5 Min." : scene ? "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining) : program ? "Aktiv · " + program.name :
+      <small>${escape(light.preview ? "Live-Vorschau · Rückkehr zum Normalwert in höchstens " + (this.kind === "programs" ? "1 Min." : "5 Min.") : scene ? (light.scene?.manual ? "Manueller Modus · " + scene.name + " · dauerhaft" : "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining)) : program ? "Aktiv · " + program.name :
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<div class="actions"><small>Kurvenwert um ${clock(preview)} · Sollwert</small></div>
@@ -347,7 +349,7 @@ class ReefStudioPanel extends HTMLElement {
         ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
         ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
         ${programs ? "" : `<label class="field">Dauer in Minuten (max. 60)<input id="duration" type="number" min="1" max="60" value="${this.duration}"></label>
-        ${isGroup ? "" : `<button id="manual" data-live>Manueller Modus · 60 Min.</button>`}`}
+        ${isGroup ? "" : `<button id="manual" data-live>Manueller Modus aktivieren</button>`}`}
         ${isGroup ? "" : `<button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>`}` : ""}
       </div>${!programs && Object.keys(library).length ? `<div class="actions"><small>Schnell wechseln:</small>
         ${Object.entries(library).map(([id, item]) => `<button data-start-scene="${escape(id)}" class="${light.scene?.id === id ? "primary" : ""}">${escape(item.name)}</button>`).join("")}

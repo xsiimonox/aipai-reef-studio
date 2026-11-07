@@ -179,7 +179,7 @@ class ReefStudio:
             await self.save({"preview": None})
             preview = None
         scene = self.data["scene"]
-        if scene and scene["until"] <= dt_util.utcnow().timestamp():
+        if scene and scene.get("until") is not None and scene["until"] <= dt_util.utcnow().timestamp():
             await self.save({"scene": None})
             scene = None
         program = self.data["program"]
@@ -282,8 +282,9 @@ class ReefStudio:
                 if not self.hub.has_state or not self.hub.available:
                     raise OSError("Die Lampe ist gerade nicht erreichbar.")
                 levels = validate_levels(msg.get("levels"), self.hub.roads)
+                preview_seconds = msg.get("preview_seconds", 5 * 60)
                 await self.save({
-                    "preview": {"levels": levels, "until": dt_util.utcnow().timestamp() + 5 * 60},
+                    "preview": {"levels": levels, "until": dt_util.utcnow().timestamp() + preview_seconds},
                 })
                 self.sent = None
                 await self.update_output()
@@ -303,8 +304,7 @@ class ReefStudio:
                 if kind != "scenes" or item_id not in library:
                     raise ValueError("Bitte eine gespeicherte Szene für den manuellen Modus wählen.")
                 validate_item("scenes", library[item_id], self.hub.roads)
-                until = dt_util.utcnow().timestamp() + 60 * 60
-                await self.save({"scene": {"id": item_id, "until": until}, "preview": None})
+                await self.save({"scene": {"id": item_id, "until": None, "manual": True}, "preview": None})
             elif action == "resume":
                 await self.save({"scene": None, "preview": None})
             else:
@@ -334,6 +334,7 @@ def register_studio_api(hass) -> None:
     vol.Optional("item_id"): str,
     vol.Optional("item"): dict,
     vol.Optional("duration"): vol.All(int, vol.Range(min=1, max=60)),
+    vol.Optional("preview_seconds"): vol.All(int, vol.Range(min=30, max=300)),
     vol.Optional("levels"): [int],
     vol.Optional("name"): str,
     vol.Optional("serials"): [str],
