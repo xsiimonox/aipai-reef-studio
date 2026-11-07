@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.1] - 2026-11-07
+
+### Changed
+
+- Die Auswahl zwischen linearer und sinusförmiger Rampe wurde entfernt. Tagesprogramme verwenden ausschließlich lineare Übergänge.
+
 ## [0.20.0] - 2026-11-07
 
 ### Changed
