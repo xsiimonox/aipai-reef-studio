@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.6] - 2026-11-07
+
+### Fixed
+
+- Der Programm- und Szeneneditor ist jetzt auch bei ausgewählter Lampengruppe vollständig nutzbar: neue Profile, Bearbeiten, Kopieren, Löschen, manueller Modus und die zeitlich begrenzte Live-Vorschau funktionieren für die ganze Gruppe.
+
 ## [0.20.5] - 2026-11-07
 
 ### Added

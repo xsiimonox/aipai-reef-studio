@@ -9,7 +9,7 @@ from .const import DOMAIN
 
 
 class ReefGroups:
-    """Groups reference fixture serials and synchronize same-named studio items."""
+    """Groups reference fixtures and can control their shared Studio library."""
 
     def __init__(self, hass) -> None:  # noqa: ANN001
         self.hass = hass
@@ -53,12 +53,26 @@ class ReefGroups:
                 if all(label in studio.hub.labels for studio in members[1:])
             ]
             def shared(kind: str) -> dict:
-                names = {
-                    item["name"] for item in members[0].data[kind].values()
-                    if all(any(other["name"] == item["name"] for other in studio.data[kind].values())
-                           for studio in members[1:])
-                }
-                return {name: {"name": name} for name in sorted(names)}
+                # Programmes and scenes are now stored once for all fixtures.
+                # Returning their original ids makes the group editor fully
+                # equivalent to the editor for one selected lamp.
+                library = members[0].library
+                return dict(library.data[kind]) if library is not None else {}
+            program = members[0].data.get("program")
+            if not all(studio.data.get("program") == program for studio in members):
+                program = None
+            scene = members[0].data.get("scene")
+            if scene and not all(
+                other.data.get("scene") and other.data["scene"].get("id") == scene.get("id")
+                for other in members
+            ):
+                scene = None
+            preview = members[0].data.get("preview")
+            if preview and not all(
+                other.data.get("preview") and other.data["preview"].get("levels") == preview.get("levels")
+                for other in members
+            ):
+                preview = None
             output.append({
                 "serial": f"group:{group_id}", "group_id": group_id, "name": group["name"],
                 "members": group["serials"], "labels": shared_labels,
@@ -66,12 +80,12 @@ class ReefGroups:
                 "online": all(studio.hub.available for studio in members),
                 "minute": members[0].hub._now().hour * 60 + members[0].hub._now().minute,
                 "timezone": str(members[0].hub.timezone), "reported": [], "firmware_points": [],
-                "programs": shared("programs"), "scenes": shared("scenes"), "program": None,
-                "scene": None, "sent": None, "sent_at": None, "error": None, "group": True,
+                "programs": shared("programs"), "scenes": shared("scenes"), "program": program,
+                "scene": scene, "preview": preview, "sent": None, "sent_at": None, "error": None, "group": True,
             })
         return output
 
-    async def command(self, group_id: str, action: str, kind: str, item_name: str | None, duration: int) -> None:
+    async def command(self, group_id: str, msg: dict) -> None:
         group = self.groups.get(group_id)
         if group is None:
             raise ValueError("Gruppe nicht gefunden.")
@@ -80,23 +94,24 @@ class ReefGroups:
         members = [studios.get(serial) for serial in group["serials"]]
         if any(member is None for member in members):
             raise ValueError("Nicht alle Gruppenlampen sind geladen.")
+        action = msg["action"]
+        # Library changes never talk to the fixture. One member is enough,
+        # because every member uses the same persistent library.
+        if action in ("save", "delete"):
+            await members[0].command(msg)
+            return
         for studio in members:
             if not studio.hub.local or not studio.hub.available:
                 raise OSError(f"{studio.hub.display_name} ist nicht lokal erreichbar.")
-        if action in ("activate",):
-            matches = []
-            for studio in members:
-                match = next((item_id for item_id, item in studio.data[kind].items()
-                              if item["name"] == item_name), None)
-                if match is None:
-                    raise ValueError(f"{studio.hub.display_name} hat keinen Eintrag „{item_name}“.")
-                matches.append(match)
-            for studio, item_id in zip(members, matches, strict=True):
-                await studio.command({"action": action, "kind": kind, "item_id": item_id,
-                                      "duration": duration})
-            return
         for studio in members:
-            await studio.command({"action": action, "kind": kind})
+            command = dict(msg)
+            if action == "preview":
+                # A mixed 6/8-channel group only exposes its common controls.
+                # Fill additional MAX channels with zero for this temporary
+                # preview, while preserving an 8-channel profile in the library.
+                levels = command.get("levels", [])
+                command["levels"] = (levels + [0] * studio.hub.roads)[:studio.hub.roads]
+            await studio.command(command)
 
 
 async def async_get_groups(hass) -> ReefGroups:  # noqa: ANN001

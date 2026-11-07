@@ -517,10 +517,7 @@ async def studio_command(hass, connection, msg) -> None:
         elif action != "list":
             serial = msg.get("serial", "")
             if serial.startswith("group:"):
-                await groups.command(
-                    serial.removeprefix("group:"), action, msg.get("kind", "programs"),
-                    msg.get("item_id"), msg.get("duration", 15),
-                )
+                await groups.command(serial.removeprefix("group:"), msg)
             else:
                 studio = studios.get(serial)
                 if studio is None:

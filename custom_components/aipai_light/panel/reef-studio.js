@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.20.5";
+const REEF_STUDIO_VERSION = "0.20.6";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -242,7 +242,7 @@ class ReefStudioPanel extends HTMLElement {
         <div class="scrub"><input id="preview" type="range" min="0" max="1439" aria-label="Uhrzeit der Vorschau">
           <output id="preview-time"></output><button id="now-button" class="subtle">Jetzt</button></div>
         <div class="actions"><label class="field">An Lampe anzeigen (Min.)<input id="curve-preview-duration" type="number" min="1" max="60" value="${this.curvePreviewMinutes ?? 5}"></label>
-          <button id="curve-preview" data-curve-preview ${light.group ? "disabled" : ""}>Diese Uhrzeit anzeigen</button></div>
+          <button id="curve-preview" data-curve-preview>Diese Uhrzeit anzeigen</button></div>
         <div class="legend">${light.labels.map((label, index) =>
           `<span><i class="dot" style="--c:${COLORS[index]}"></i>${escape(label)}</span>`).join("")}</div>
       </section><section class="panel"><div class="row spread"><h2>Kanalpegel</h2><span id="online" class="pill"></span></div>
@@ -356,7 +356,7 @@ class ReefStudioPanel extends HTMLElement {
       button.disabled = this.busy || !light.local || !light.online;
     });
     const curvePreview = this.$.querySelector("[data-curve-preview]");
-    if (curvePreview) curvePreview.disabled = this.busy || !light.local || !light.online || light.group;
+    if (curvePreview) curvePreview.disabled = this.busy || !light.local || !light.online;
   }
 
   draw(points, now, preview) {
@@ -386,11 +386,10 @@ class ReefStudioPanel extends HTMLElement {
     if (this.kind === "diagnostics") return this.diagnosticsEditor();
     if (this.kind === "groups") return this.groupEditor();
     const programs = this.kind === "programs";
-    const isGroup = light.group;
     const library = light[this.kind];
     const node = this.$.querySelector("#editor");
     node.innerHTML = `<div class="row spread"><h2>${programs ? "Programmbibliothek" : "Szenenbibliothek"}</h2>
-      ${isGroup ? "" : `<button id="new" class="primary">${programs ? "+ Programm" : "+ Szene"}</button>`}</div>
+      <button id="new" class="primary">${programs ? "+ Programm" : "+ Szene"}</button></div>
       <p class="muted">${programs ? "Zwischen den Stützpunkten läuft jeder Kanal linear zur nächsten Einstellung." :
         "Speichere beliebige Looks wie Blaulicht, Foto oder Notlicht. Nach Ablauf kehrt die Lampe zum vorherigen Programm oder Modus zurück."}</p>
       <div class="actions">${Object.keys(library).length ? `
@@ -398,8 +397,8 @@ class ReefStudioPanel extends HTMLElement {
         ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
         ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
         ${programs ? "" : `<label class="field">Dauer in Minuten (max. 60)<input id="duration" type="number" min="1" max="60" value="${this.duration}"></label>
-        ${isGroup ? "" : `<button id="manual" data-live>Manueller Modus aktivieren</button>`}`}
-        ${isGroup ? "" : `<button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>`}` : ""}
+        <button id="manual" data-live>Manueller Modus aktivieren</button>`}
+        <button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>` : ""}
       </div>${!programs && Object.keys(library).length ? `<div class="actions"><small>Schnell wechseln:</small>
         ${Object.entries(library).map(([id, item]) => `<button data-start-scene="${escape(id)}" class="${light.scene?.id === id ? "primary" : ""}">${escape(item.name)}</button>`).join("")}
       </div>` : ""}<div id="draft"></div>`;
