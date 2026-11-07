@@ -20,6 +20,7 @@ int overrideLevels[8] = {}, sent[8] = {};
 float temperature = NAN;
 bool lampOnline = false, forceOutput = true;
 const char* codes[] = {"w", "b", "r", "g", "b2", "p", "uv", "wm"};
+const char* defaultApPassword = "ReefBridge2026!";
 
 bool expired(uint32_t deadline) { return int32_t(millis() - deadline) >= 0; }
 void logEvent(String text) {
@@ -182,7 +183,7 @@ void setup() {
   token = prefs.getString("token", "");
   if (token.isEmpty()) { token = randomSecret(); prefs.putString("token", token); }
   apPassword = prefs.getString("ap_pass", "");
-  if (apPassword.isEmpty()) { apPassword = randomSecret().substring(0, 12); prefs.putString("ap_pass", apPassword); }
+  if (apPassword.isEmpty()) { apPassword = defaultApPassword; prefs.putString("ap_pass", apPassword); }
   deserializeJson(config, prefs.getString("config", "{}"));
   WiFi.mode(WIFI_AP_STA);
   String ssid = "ReefBridge-" + String((uint32_t)ESP.getEfuseMac(), HEX);

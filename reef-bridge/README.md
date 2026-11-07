@@ -37,12 +37,12 @@ Der [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) wird aus
 1. ESP32 per **Datenkabel** verbinden. Bei fehlendem USB-Port eventuell den passenden CP210x-/CH340-Treiber des Boardherstellers installieren.
 2. Im Browser-Installer „Connect“ / „Install“ wählen und den USB-Port auswählen. Nur das Abbild für klassischen ESP32 verwenden.
 3. Bei Verbindungsproblemen BOOT während des Verbindungsaufbaus halten, gegebenenfalls EN/RESET kurz drücken.
-4. Nach Installation die Konsole mit 115200 Baud öffnen. `INFO` und Enter senden. Die Bridge gibt Setup-WLAN-Passwort und API-Token aus. Beide lokal aufbewahren und nicht als Screenshot veröffentlichen.
-5. Mit dem angezeigten `ReefBridge-…`-WLAN verbinden. `http://192.168.4.1` öffnen und den API-Token eintragen.
+4. Das Setup-WLAN verwendet bei einer **neuen Installation** das Standardpasswort **`ReefBridge2026!`**. Die Konsole mit 115200 Baud öffnen und `INFO` mit Enter senden, falls die Zugangsdaten geprüft werden sollen; sie zeigt außerdem den individuellen API-Token. Den Token lokal aufbewahren und nicht als Screenshot veröffentlichen.
+5. Mit `ReefBridge-…` und dem Passwort `ReefBridge2026!` verbinden. `http://192.168.4.1` öffnen und den API-Token eintragen.
 6. Heim-WLAN unter „WLAN einrichten“ speichern. Nach Verbindung schließt das Setup-WLAN. Bridge-IP im Router suchen oder `http://reefbridge.local` versuchen. Bei mehreren Bridges die IP verwenden.
 7. Lampen-IP und **korrekte Seriennummer** eintragen. Kanalprofil wählen, Tagespunkte festlegen und speichern. Der Controller prüft vor jedem Schreibzyklus die Seriennummer.
 
-Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
+Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Das Standardpasswort gilt nur, solange noch kein Passwort im Flash gespeichert ist: Bereits eingerichtete Bridges behalten ihr bisheriges Passwort. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
 
 ### Terminal-Installer als Alternative
 
