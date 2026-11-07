@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.6] - 2026-11-07
+
+### Fixed
+
+- Die Tagesprogramm-Grafik zeichnet sinusförmige Rampen nun tatsächlich als abgeflachte Kurven statt sie optisch als gerade Linien zwischen Stützpunkten darzustellen.
+
 ## [0.18.5] - 2026-11-07
 
 ### Added

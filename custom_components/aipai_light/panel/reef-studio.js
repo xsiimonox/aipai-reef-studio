@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.5";
+const REEF_STUDIO_VERSION = "0.18.6";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -352,11 +352,12 @@ class ReefStudioPanel extends HTMLElement {
   draw(points, now, preview) {
     const x = minute => 42 + minute * 668 / 1440;
     const y = level => 170 - level * 1.48;
-    const samples = points.length > 1 ? [
-      { minute: 0, levels: interpolate(points, 0) },
-      ...points,
-      { minute: 1440, levels: interpolate(points, 0) },
-    ] : [];
+    // Sample the complete curve instead of just connecting support points.
+    // This makes a sinus transition visibly different from a linear ramp.
+    const samples = points.length > 1 ? Array.from({ length: 145 }, (_, index) => {
+      const minute = index * 10;
+      return { minute, levels: interpolate(points, minute % 1440) };
+    }) : [];
     this.$.querySelector("#chart").innerHTML = `<svg viewBox="0 0 730 200" role="img" aria-label="Tagesverlauf der LED-Kanäle von 0 bis 24 Uhr">
       <defs><linearGradient id="night"><stop stop-color="#122843"/><stop offset=".55" stop-color="#213c5a"/><stop offset="1" stop-color="#122843"/></linearGradient></defs>
       <rect x="42" y="22" width="668" height="148" rx="9" fill="url(#night)"/>
