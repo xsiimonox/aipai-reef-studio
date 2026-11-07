@@ -12,11 +12,11 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 ## Funktionen
 
-**Neu: [AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit eigener Weboberfläche, USB-/Browser-Installer für macOS und Windows sowie optionaler Home-Assistant-Anbindung mit lokalem Fallback.
+**[AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit demselben Reef-Studio-Editor, Bibliotheken und Gruppen für bis zu vier Lampen. USB-/Browser-Installer für macOS und Windows sowie optionale Home-Assistant-Anbindung mit lokalem Fallback. Beide Varianten verwenden eine gemeinsame Oberfläche; CI prüft zusammengehörige Versionen. Bibliotheksdaten zwischen HA und Bridge werden nicht automatisch abgeglichen.
 
 - Reef Studio als native Home-Assistant-Seitenleiste
-- Mehrere Tagesprogramme mit beliebig vielen Stützpunkten
-- Lineare oder weiche Sinusrampen für Sonnenauf- und -untergang
+- Mehrere Tagesprogramme mit jeweils 2–48 Stützpunkten
+- Lineare Rampen für Sonnenauf- und -untergang
 - Szenen für Blaulicht, Fotos, Wartung oder Notbetrieb mit zeitgesteuerter Rückkehr zum Tagesprogramm
 - Mehrere Lampen in synchronisierten Gruppen
 - Lokale Steuerung ohne Cloud, MQTT-Broker oder ESP-Flash

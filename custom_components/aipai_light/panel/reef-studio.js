@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.21.0";
+const REEF_STUDIO_VERSION = "0.21.1";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -136,6 +136,8 @@ class ReefStudioPanel extends HTMLElement {
 
   activeMode(light) {
     if (light.preview) return "Live-Vorschau";
+    if (light.bridge_mode === "lease") return "Home Assistant · zeitlich bestätigte Steuerung";
+    if (light.bridge_mode === "manual" && !light.scene) return "Manueller Modus · dauerhaft";
     if (light.scene) {
       const scene = light.scenes[light.scene.id];
       return light.scene.manual ? `Manueller Modus · ${scene?.name ?? "Szene"}` :
@@ -189,7 +191,7 @@ class ReefStudioPanel extends HTMLElement {
       const lights = await this._hass.callWS({ type: "aipai_light/studio", action: "list" });
       if (!this.busy && this.isConnected) this.receive(lights);
     } catch (error) {
-      this.status(error.message || "Home Assistant antwortet gerade nicht.");
+      this.status(error.message || `${this._hass.productName || "Home Assistant"} antwortet gerade nicht.`);
     } finally {
       this.reading = false;
     }
@@ -204,8 +206,10 @@ class ReefStudioPanel extends HTMLElement {
       ]
     ));
     const changed = signature([...payload.lights, ...payload.groups]) !== signature(this.lights) ||
-      JSON.stringify(payload.groups) !== JSON.stringify(this.groups);
+      JSON.stringify(payload.groups) !== JSON.stringify(this.groups) ||
+      JSON.stringify(payload.update) !== JSON.stringify(this.updateInfo);
     this.lights = [...payload.lights, ...payload.groups];
+    this.clockOffset = ((payload.lights[0]?.now_epoch ?? Date.now() / 1000) * 1000) - Date.now();
     this.groups = payload.groups;
     this.updateInfo = payload.update;
     if (!this.light) {
@@ -343,7 +347,7 @@ class ReefStudioPanel extends HTMLElement {
 
   secondsUntil(timestamp, light) {
     if (!timestamp) return null;
-    const offset = (light.now_epoch ?? Date.now() / 1000) * 1000 - Date.now();
+    const offset = this.clockOffset ?? 0;
     return Math.max(0, Math.ceil(timestamp - (Date.now() + offset) / 1000));
   }
 

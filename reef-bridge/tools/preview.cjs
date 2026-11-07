@@ -1,41 +1,66 @@
-// Render the actual firmware UI with simulated API responses, never a real lamp.
+// Run the actual shared firmware UI against a simulated local API, never lamps.
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const fs=require('node:fs');
-const path=require('node:path');
-const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 (async()=>{
- const root=path.resolve(__dirname,'..');
- const config={lamp_ip:'192.0.2.20',serial:'DEMO',channels:6,timezone:'CET-1CEST,M3.5.0,M10.5.0/3',points:[{minute:0,levels:[0,0,0,0,0,0]},{minute:540,levels:[0,0,0,0,0,0]},{minute:660,levels:[25,70,3,2,85,12]},{minute:1080,levels:[25,70,3,2,85,12]},{minute:1200,levels:[0,0,0,0,0,0]},{minute:1439,levels:[0,0,0,0,0,0]}],scenes:[{name:'Blaulicht',levels:[0,35,0,0,75,10]}]};
- let mode='schedule'; const calls=[];
+ const root=path.resolve(__dirname,'..'),repo=path.resolve(root,'..');
+ const html=fs.readFileSync(path.join(root,'web/index.html'),'utf8')
+   .replace('/* SHARED_STUDIO */',()=>fs.readFileSync(path.join(repo,'custom_components/aipai_light/panel/reef-studio.js'),'utf8'))
+   .replace('/* BRIDGE_ADAPTER */',()=>fs.readFileSync(path.join(root,'web/bridge-adapter.js'),'utf8'));
+ const points=[0,540,660,1080,1200].map((minute,i)=>({minute,levels:[25,70,3,2,85,12,5,15].map(v=>i===2||i===3?v:0)}));
+ const workspace={schema:1,lamps:[],programs:{day:{name:'Riff · Tageslicht',points}},scenes:{blue:{name:'Blaulicht',levels:[0,40,0,0,80,10,0,0]}},groups:{}};
+ const calls=[],runtime=[];let state;
+ const reset=()=>{state={version:'0.2.0',workspace,now_epoch:Date.now()/1000,update:{available:false,latest:'0.2.0'},lights:runtime};};reset();
  const browser=await chromium.launch({headless:true});
  try{
- const page=await browser.newPage({viewport:{width:1360,height:1000}});
- const errors=[];page.on('pageerror',err=>errors.push(String(err)));
- await page.route('http://bridge.test/**',async route=>{
-  const url=new URL(route.request().url());
-  if(url.pathname==='/'){await route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'web/index.html'),'utf8')});return;}
-  if(route.request().method()==='POST'){
-   const body=route.request().postDataJSON();calls.push({path:url.pathname,body});
-   if(url.pathname==='/api/control')mode=body.action==='resume'?'schedule':body.action;
-   if(url.pathname==='/api/config')Object.assign(config,body);
-   await route.fulfill({json:{ok:true}});return;
-  }
-  await route.fulfill({json:{version:'0.1.2',mode,lamp_online:true,clock_valid:true,temperature:38.4,remaining_seconds:0,update:{available:false,latest:'0.1.2'},config,sent:[25,70,3,2,85,12],log:['DEMO · Beispieldaten, keine reale Lampe','Output schedule; observed power=on, mode=0']}});
- });
- await page.goto('http://bridge.test/');
- await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('38.4'));
- await page.waitForFunction(()=>document.querySelector('#update').textContent.includes('Firmware aktuell: v0.1.2'));
- assert.equal(await page.locator('#channels input').count(),6);
- await page.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Dauerhaft'));
- await page.locator('#resume').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Tagesprogramm'));
- await page.locator('#scene-name').fill('Fotoszene');await page.locator('#save-scene').click();
- await page.waitForFunction(()=>document.querySelector('#scenes').options.length===2);
- assert(calls.some(c=>c.body.action==='manual'));assert(calls.some(c=>c.body.action==='resume'));
- assert.equal(config.scenes[1].name,'Fotoszene');assert.deepEqual(errors,[]);
- await page.screenshot({path:path.join(root,'docs/bridge-desktop.png'),fullPage:true});
- await page.setViewportSize({width:390,height:844});
- assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
- await page.screenshot({path:path.join(root,'docs/bridge-mobile.png'),fullPage:true});
- console.log('PASS: six channels, manual/resume actions, scene persistence request, mobile layout, no JS errors.');
+  const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('http://bridge.test/**',async route=>{
+   const url=new URL(route.request().url());if(url.pathname==='/'){await route.fulfill({contentType:'text/html; charset=utf-8',body:html});return;}
+   const msg=route.request().postDataJSON();if(msg){calls.push({path:url.pathname,body:msg});
+    if(url.pathname==='/api/fixture'){
+     workspace.lamps.push({...msg,points,program:'day'});runtime.push({program:'day',scene:null,preview:null,online:true,minute:780,temperature:38.5,sent:[25,70,3,2,85,12,5,15],log:[]});
+    }
+    if(url.pathname==='/api/studio'){
+     if(msg.action==='save')workspace[msg.kind][msg.item_id||'saved-'+calls.length]=msg.item;
+     if(msg.action==='group_save')workspace.groups[msg.item_id||'group1']={name:msg.name,serials:msg.serials};
+     const targets=msg.serial?.startsWith('group:')?workspace.groups[msg.serial.slice(6)].serials:[msg.serial];
+     workspace.lamps.forEach((lamp,i)=>{if(!targets.includes(lamp.serial))return;
+      if(msg.action==='activate'){if(msg.kind==='programs')runtime[i].program=msg.item_id;else runtime[i].scene={id:msg.item_id,until:Date.now()/1000+msg.duration*60};}
+      if(msg.action==='manual')runtime[i].scene={id:msg.item_id,until:null,manual:true};
+      if(msg.action==='preview')runtime[i].preview={until:Date.now()/1000+msg.preview_seconds};
+      if(msg.action==='preview_cancel')runtime[i].preview=null;
+      if(msg.action==='resume'){runtime[i].preview=null;runtime[i].scene=null;}
+     });
+    }reset();await route.fulfill({json:{ok:true}});return;
+   }state.now_epoch=Date.now()/1000;await route.fulfill({json:state});
+  });
+  await page.goto('http://bridge.test/');const ui=page.locator('reef-bridge-panel');
+  // Empty workspace must still show an accessible onboarding form.
+  await ui.locator('#device-name').fill('Riff · A7 SIII');await ui.locator('#device-ip').fill('192.0.2.20');await ui.locator('#device-serial').fill('DEMO6');await ui.locator('#store-device').click();
+  await ui.locator('#library').waitFor();await ui.locator('#library').selectOption('day');
+  assert.equal(await ui.locator('[data-level][type=range]').count(),6);
+  await ui.locator('[data-point="2"]').click();
+  await ui.locator('[data-level="1"][type=number]').fill('55');
+  await page.waitForTimeout(350);
+  assert(calls.some(c=>c.body.action==='preview'&&c.body.preview_seconds===60&&c.body.levels.length===6));
+  await ui.locator('#name').fill('Riff · Neues Programm');await ui.locator('#save-new').click();
+  await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.programs['saved-'+0]!==undefined || Object.keys(document.querySelector('reef-bridge-panel').light.programs).length===2);
+  const screenshotDir=process.env.BRIDGE_SCREENSHOT_DIR||'/tmp/reef-bridge-studio';fs.mkdirSync(screenshotDir,{recursive:true});
+  await ui.locator('#library').selectOption('day');await ui.locator('[data-point="2"]').click();
+  for(const width of [1440,1024,768,390,320]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow at '+width);assert.deepEqual(await ui.evaluate(el=>[...el.shadowRoot.querySelectorAll('button,input,select,.panel')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>n.id||n.className)),[],'control overflow at '+width);if(width===1440||width===390)await page.screenshot({path:path.join(screenshotDir,'bridge-'+width+'.png'),fullPage:true});}
+  await page.setViewportSize({width:1440,height:1000});
+  await ui.getByRole('button',{name:'Einrichtung',exact:true}).click();await page.screenshot({path:path.join(screenshotDir,'setup.png'),fullPage:true});await ui.locator('#add-lamp').click();
+  await ui.locator('#device-name').fill('Riff · MAX Pro');await ui.locator('#device-ip').fill('192.0.2.21');await ui.locator('#device-serial').fill('DEMO8');await ui.locator('#device-count').selectOption('8');await ui.locator('#store-device').click();
+  await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').lights.length===2);
+  await ui.locator('[data-tab=groups]').click();await ui.locator('#new-group').click();await ui.locator('#group-name').fill('Hauptbecken');
+  for(const box of await ui.locator('[type=checkbox]').all())await box.check();await ui.locator('#save-group').click();
+  await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=scenes]').click();await ui.locator('#library').selectOption('blue');
+  await ui.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.scene?.manual===true);
+  assert.equal(await ui.locator('[data-level][type=range]').count(),6);
+  await ui.locator('[data-action=resume]').click();await ui.locator('#library').selectOption('blue');await ui.locator('#duration').fill('12');await ui.locator('#activate').click();
+  assert(calls.some(c=>c.body.action==='activate'&&c.body.duration===12&&c.body.serial==='group:group1'));
+  await ui.locator('#new').click();assert(await ui.locator('#save').isVisible());
+  // Native countdown continues between network polls.
+  const before=await ui.evaluate(el=>{el.testDeadline=Date.now()/1000+60;return el.secondsUntil(el.testDeadline,el.light);});await page.waitForTimeout(1100);const after=await ui.evaluate(el=>el.secondsUntil(el.testDeadline,el.light));assert(after<before,'Countdown must tick between polls');
+  assert.deepEqual(errors,[]);console.log('PASS: onboarding, 6/8 channels, shared library save, preview duration, mixed group manual/scene/resume, responsive 320–1440px; no JS errors. '+screenshotDir);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

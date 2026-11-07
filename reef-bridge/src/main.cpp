@@ -5,293 +5,314 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
+#include <LittleFS.h>
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include "web_ui.h"
 
-// First hardware target: classic ESP32 WROOM / DevKit, 4 MB flash.
+// Shared Studio UI; bounded local persistence and independent lamp runtimes.
 WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
-DynamicJsonDocument config(16384);
-String apPassword, events[80], lastError;
-unsigned eventCount = 0;
-uint32_t lastOutput = 0, overrideEnd = 0, lastReconnect = 0, lastUpdateCheck = 0;
-String mode = "schedule";
-int overrideLevels[8] = {}, sent[8] = {};
-float temperature = NAN;
-bool lampOnline = false, forceOutput = true, updateAvailable = false;
-String latestVersion, updateUrl;
-const char* codes[] = {"w", "b", "r", "g", "b2", "p", "uv", "wm"};
-const char* defaultApPassword = "ReefBridge2026!";
-const char* updateManifestUrl = "https://xsiimonox.github.io/aipai-reef-studio/bridge-update.json";
-
-bool expired(uint32_t deadline) { return int32_t(millis() - deadline) >= 0; }
-void logEvent(String text) {
-  time_t now = time(nullptr);
-  events[eventCount++ % 80] = String((long)now) + " | " + text;
-  Serial.println(text);
+DynamicJsonDocument workspace(65536);
+const int MAX_LAMPS = 4;
+const char* codes[] = {"w","b","r","g","b2","p","uv","wm"};
+const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
+const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
+struct Lamp {
+  String mode="schedule", scene, error;
+  int levels[8]={}, sent[8]={}, previewLevels[8]={};
+  uint32_t until=0, previewEnd=0, lastOutput=0;
+  bool online=false, force=true, releaseRequested=false;
+  float temperature=NAN;
+  String logs[24]; unsigned logCount=0;
+} lamps[MAX_LAMPS];
+bool fsReady=false, updateAvailable=false;
+String latestVersion, updateError, apPassword;
+uint32_t lastUpdateCheck=0, lastReconnect=0;
+bool expired(uint32_t deadline) { return int32_t(millis()-deadline)>=0; }
+int count() { return workspace["lamps"].size(); }
+int channels(int i) { return workspace["lamps"][i]["channels"] | 6; }
+String newId() { return String((uint32_t)esp_random(),HEX)+String((uint32_t)esp_random(),HEX); }
+void logEvent(int i, String text) {
+  Serial.println(text); lamps[i].logs[lamps[i].logCount++%24]=text;
 }
-int channels() { return config["channels"] | 6; }
-int compareVersion(const String& a, const String& b) {
-  int ai = 0, bi = 0;
-  for (int part = 0; part < 3; part++) {
-    int ae = a.indexOf('.', ai), be = b.indexOf('.', bi);
-    int an = a.substring(ai, ae < 0 ? a.length() : ae).toInt();
-    int bn = b.substring(bi, be < 0 ? b.length() : be).toInt();
-    if (an != bn) return an < bn ? -1 : 1;
-    ai = ae < 0 ? a.length() : ae + 1;
-    bi = be < 0 ? b.length() : be + 1;
-  }
-  return 0;
+void fail(String message,int code=400) {
+  DynamicJsonDocument data(512);data["error"]=message;String json;serializeJson(data,json);server.send(code,"application/json",json);
 }
-void checkForUpdate() {
-  lastUpdateCheck = millis();
-  if (WiFi.status() != WL_CONNECTED) return;
-  WiFiClientSecure client; client.setInsecure();
-  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(4000);
-  if (!http.begin(client, updateManifestUrl)) return;
-  int status = http.GET();
-  String body = status == 200 ? http.getString() : "";
-  http.end();
-  if (status != 200) { logEvent("Update check unavailable (HTTP " + String(status) + ")"); return; }
-  DynamicJsonDocument update(1024);
-  if (deserializeJson(update, body)) { logEvent("Update manifest is invalid"); return; }
-  String version = update["version"] | "";
-  if (version.isEmpty()) { logEvent("Update manifest has no version"); return; }
-  latestVersion = version; updateUrl = update["installer_url"] | "";
-  bool wasAvailable = updateAvailable;
-  updateAvailable = compareVersion(BRIDGE_VERSION, latestVersion) < 0;
-  if (updateAvailable && !wasAvailable) logEvent("Firmware update available: v" + latestVersion);
+void ok() { server.send(200,"application/json","{\"ok\":true}"); }
+bool body(JsonDocument& doc) {
+  if(server.arg("plain").length()>48000 || deserializeJson(doc,server.arg("plain"))){fail("Ungültige oder zu große Daten.");return false;}return true;
 }
-void saveConfig() {
-  String json; serializeJson(config, json); prefs.putString("config", json);
-}
-void applyClock() {
-  String zone = config["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3";
-  configTzTime(zone.c_str(), "pool.ntp.org", "time.cloudflare.com");
-}
-void fail(String text, int status = 400) {
-  DynamicJsonDocument doc(512); doc["error"] = text;
-  String json; serializeJson(doc, json); server.send(status, "application/json", json);
-}
-bool readBody(JsonDocument& doc) {
-  if (server.arg("plain").length() > 14000 || deserializeJson(doc, server.arg("plain"))) {
-    fail("Invalid or oversized JSON"); return false;
-  }
+bool validLevels(JsonVariantConst levels,int n=0) {
+  if(!levels.is<JsonArrayConst>() || (n && levels.size()!=size_t(n)) || !levels.size() || levels.size()>8)return false;
+  for(JsonVariantConst v:levels.as<JsonArrayConst>())if(!v.is<int>()||v.as<int>()<0||v.as<int>()>100)return false;
   return true;
 }
-bool validLevels(JsonArrayConst values, int count) {
-  if (values.size() != size_t(count)) return false;
-  for (JsonVariantConst value : values)
-    if (!value.is<int>() || value.as<int>() < 0 || value.as<int>() > 100) return false;
-  return true;
+bool validName(JsonVariantConst value) {return value.is<const char*>() && value.as<String>().length()>0 && value.as<String>().length()<=64;}
+bool validItem(JsonVariantConst item,bool scene) {
+  if(!item.is<JsonObjectConst>()||!validName(item["name"]))return false;
+  if(scene)return validLevels(item["levels"]);
+  if(!item["points"].is<JsonArrayConst>()||item["points"].size()<2||item["points"].size()>48)return false;
+  int previous=-1,n=0;
+  for(JsonObjectConst point:item["points"].as<JsonArrayConst>()) {
+    if(!point["minute"].is<int>())return false;
+    int minute=point["minute"];if(minute<=previous||minute>=1440||!validLevels(point["levels"],n))return false;
+    n=point["levels"].size();previous=minute;
+  }return true;
 }
-bool validConfig(JsonDocument& doc) {
-  int count = doc["channels"] | 0;
-  IPAddress ip;
-  if ((count != 6 && count != 8) || !ip.fromString(doc["lamp_ip"].as<String>()) ||
-      doc["serial"].as<String>().length() == 0 || doc["serial"].as<String>().length() > 32 ||
-      doc["timezone"].as<String>().length() > 96) return false;
-  JsonArray points = doc["points"].as<JsonArray>();
-  if (points.size() < 2 || points.size() > 48) return false;
-  int previous = -1;
-  for (JsonObject p : points) {
-    if (!p["minute"].is<int>()) return false;
-    int minute = p["minute"];
-    if (minute <= previous || minute >= 1440 || !validLevels(p["levels"], count)) return false;
-    previous = minute;
-  }
-  JsonArray scenes = doc["scenes"].as<JsonArray>();
-  if (scenes.size() > 16) return false;
-  for (JsonObject scene : scenes)
-    if (scene["name"].as<String>().isEmpty() || !validLevels(scene["levels"], count)) return false;
-  return true;
+bool validFixture(JsonVariantConst lamp) {
+  IPAddress ip;int n=lamp["channels"]|0;
+  return lamp.is<JsonObjectConst>()&&validName(lamp["name"])&&(n==6||n==8)&&
+    lamp["serial"].is<const char*>()&&lamp["serial"].as<String>().length()>0&&lamp["serial"].as<String>().length()<=32&&
+    lamp["lamp_ip"].is<const char*>()&&ip.fromString(lamp["lamp_ip"].as<String>())&&
+    lamp["timezone"].is<const char*>()&&lamp["timezone"].as<String>().length()>0&&lamp["timezone"].as<String>().length()<=96;
 }
-bool fetch(String query, String& body) {
-  HTTPClient http;
-  http.setConnectTimeout(1200); http.setTimeout(1500);
-  String url = "http://" + config["lamp_ip"].as<String>() + "/?" + query;
-  if (!http.begin(url)) return false;
-  int code = http.GET();
-  if (code == 200) body = http.getString();
-  http.end();
-  if (code != 200) { lastError = "HTTP error " + String(code); return false; }
-  return true;
-}
-bool lampState(String* fields, int& n) {
-  String raw;
-  if (!fetch("read=config", raw)) return false;
-  int begin = raw.indexOf("on|");
-  int off = raw.indexOf("off|");
-  if (off >= 0 && (begin < 0 || off < begin)) begin = off;
-  if (begin < 0 || raw.length() > 8192) { lastError = "Invalid lamp response"; return false; }
-  raw = raw.substring(begin);
-  int end = raw.indexOf('"'); if (end >= 0) raw = raw.substring(0, end);
-  end = raw.indexOf('\''); if (end >= 0) raw = raw.substring(0, end);
-  n = 0; int start = 0;
-  do {
-    end = raw.indexOf('|', start);
-    if (n >= 32) { lastError = "Too many protocol fields"; return false; }
-    fields[n] = end < 0 ? raw.substring(start) : raw.substring(start, end);
-    fields[n++].trim(); start = end + 1;
-  } while (end >= 0);
-  int roads = n > 28 ? 8 : 6;
-  if (n < 25 || fields[21 + 2 * (roads - 6)] != config["serial"].as<String>() || channels() > roads) {
-    lastError = "Serial or channel profile mismatch; no writes sent"; return false;
+bool validWorkspace(JsonDocument& doc) {
+  if(!doc["lamps"].is<JsonArray>()||doc["lamps"].size()>MAX_LAMPS||!doc["programs"].is<JsonObject>()||!doc["scenes"].is<JsonObject>()||!doc["groups"].is<JsonObject>())return false;
+  for(const char* kind:{"programs","scenes"}){
+    if(doc[kind].size()>32)return false;
+    for(JsonPair item:doc[kind].as<JsonObject>())if(!validItem(item.value(),String(kind)=="scenes"))return false;
   }
-  if ((fields[0] != "on" && fields[0] != "off") || (fields[1] != "0" && fields[1] != "1")) {
-    lastError = "Unknown lamp mode; no writes sent"; return false;
+  for(size_t i=0;i<doc["lamps"].size();i++){
+    JsonVariant lamp=doc["lamps"][i];if(!validFixture(lamp))return false;
+    for(size_t j=0;j<i;j++)if(lamp["serial"].as<String>()==doc["lamps"][j]["serial"].as<String>())return false;
+    if(!lamp["program"].isNull()&&!doc["programs"].containsKey(lamp["program"].as<String>()))return false;
+    DynamicJsonDocument fallback(8192);fallback["name"]="Fallback";fallback["points"]=lamp["points"];
+    if(!validItem(fallback.as<JsonVariant>(),false))return false;
   }
-  // A verified serial alone is not sufficient to safely rebuild saveconfig.
-  for (int i = 2; i < 5 + 2 * roads; ++i) {
-    if (fields[i].isEmpty()) { lastError = "Empty lamp configuration field"; return false; }
-    for (size_t j = 0; j < fields[i].length(); ++j) {
-      char c = fields[i][j];
-      if ((c < '0' || c > '9') && !(i >= 5 + roads && c == ',')) {
-        lastError = "Unexpected lamp configuration field"; return false;
-      }
+  if(doc["groups"].size()>16)return false;
+  for(JsonPair pair:doc["groups"].as<JsonObject>()){
+    JsonVariant group=pair.value();if(!validName(group["name"])||!group["serials"].is<JsonArray>()||!group["serials"].size())return false;
+    for(size_t i=0;i<group["serials"].size();i++){
+      bool found=false;String serial=group["serials"][i];
+      for(JsonObject lamp:doc["lamps"].as<JsonArray>())if(lamp["serial"].as<String>()==serial)found=true;
+      if(!found)return false;
+      for(size_t j=0;j<i;j++)if(group["serials"][j].as<String>()==serial)return false;
     }
   }
-  String temp = fields[17 + 2 * (roads - 6)];
-  char* tail = nullptr; temperature = strtof(temp.c_str(), &tail);
-  if (tail == temp.c_str() || *tail != 0 || !isfinite(temperature)) temperature = NAN;
-  return true;
+  return !doc.overflowed()&&measureJson(doc)<=48000;
 }
-bool desired(int* target) {
-  if (mode != "schedule") {
-    if (overrideEnd && expired(overrideEnd)) { mode = "schedule"; overrideEnd = 0; logEvent("Timer/HA lease expired: schedule resumed"); }
-    else { for (int i = 0; i < channels(); i++) target[i] = overrideLevels[i]; return true; }
+bool persist(JsonDocument& next) {
+  if(!fsReady){fail("Lokaler Speicher nicht verfügbar.",507);return false;}
+  if(!validWorkspace(next)){fail("Ungültige Bibliothek oder Speichergrenze erreicht (48 KB).");return false;}
+  File file=LittleFS.open("/studio.tmp","w");
+  if(!file){fail("Sicherung konnte nicht geschrieben werden.",507);return false;}
+  size_t bytes=serializeJson(next,file);file.close();
+  if(bytes!=measureJson(next)||!LittleFS.rename("/studio.tmp","/studio.json")){fail("Speichern fehlgeschlagen.",507);return false;}
+  workspace.set(next);return true;
+}
+void defaults() {
+  workspace.clear();workspace["schema"]=1;workspace.createNestedArray("lamps");
+  workspace.createNestedObject("programs");workspace.createNestedObject("scenes");workspace.createNestedObject("groups");
+}
+void fallbackPoints(JsonObject lamp) {
+  JsonArray points=lamp.createNestedArray("points");
+  for(int minute:{0,600,1200}){JsonObject point=points.createNestedObject();point["minute"]=minute;JsonArray levels=point.createNestedArray("levels");for(int j=0;j<8;j++)levels.add(0);}
+}
+void loadWorkspace() {
+  defaults();
+  if(fsReady&&LittleFS.exists("/studio.json")) {
+    File file=LittleFS.open("/studio.json","r");DynamicJsonDocument data(65536);auto error=deserializeJson(data,file);file.close();
+    if(!error&&validWorkspace(data)){workspace.set(data);return;}
+    Serial.println("Stored Studio data invalid; file retained. Reimport a backup.");return;
   }
-  if (time(nullptr) < 1700000000) { lastError = "Waiting for valid NTP time; no schedule writes"; return false; }
-  time_t now = time(nullptr); tm local; localtime_r(&now, &local);
-  int minute = local.tm_hour * 60 + local.tm_min;
-  JsonArray points = config["points"].as<JsonArray>();
-  if (points.size() < 2) return false;
-  int right = 0;
-  for (size_t i = 0; i < points.size(); i++) if (points[i]["minute"].as<int>() > minute) { right = i; break; }
-  JsonObject a = points[(right + points.size() - 1) % points.size()], b = points[right];
-  int span = (b["minute"].as<int>() - a["minute"].as<int>() + 1440) % 1440;
-  if (!span) return false;
-  float fraction = float((minute - a["minute"].as<int>() + 1440) % 1440) / span;
-  for (int i = 0; i < channels(); i++) target[i] = lroundf(a["levels"][i].as<int>() +
-      (b["levels"][i].as<int>() - a["levels"][i].as<int>()) * fraction);
+  // First 0.2 boot imports the previous one-lamp configuration. Keep the old
+  // Preferences key as a recovery copy, never erase it during migration.
+  DynamicJsonDocument legacy(16384);deserializeJson(legacy,prefs.getString("config","{}"));
+  if(!legacy["serial"].isNull()) {
+    JsonObject lamp=workspace["lamps"].createNestedObject();lamp.set(legacy.as<JsonObject>());lamp["name"]="AIPAI "+legacy["serial"].as<String>();
+    JsonObject program=workspace["programs"].createNestedObject("legacy-day");program["name"]="Bisheriges Tagesprogramm";program["points"]=legacy["points"];lamp["program"]="legacy-day";lamp.remove("scenes");
+    int i=0;for(JsonObject scene:legacy["scenes"].as<JsonArray>())workspace["scenes"]["legacy-"+String(i++)]=scene;
+    if(validWorkspace(workspace)&&fsReady){File file=LittleFS.open("/studio.json","w");serializeJson(workspace,file);file.close();}
+  }
+}
+bool fetch(int i,String query,String& response) {
+  HTTPClient http;http.setConnectTimeout(900);http.setTimeout(1200);
+  if(!http.begin("http://"+workspace["lamps"][i]["lamp_ip"].as<String>()+"/?"+query))return false;
+  int code=http.GET();if(code==200)response=http.getString();http.end();
+  if(code!=200){lamps[i].error="Lampen-HTTP "+String(code);return false;}return true;
+}
+bool lampState(int i,String* fields,int& n) {
+  String raw;if(!fetch(i,"read=config",raw))return false;
+  int begin=raw.indexOf("on|"),off=raw.indexOf("off|");if(off>=0&&(begin<0||off<begin))begin=off;
+  if(begin<0||raw.length()>8192){lamps[i].error="Ungültige Lampenantwort";return false;}
+  raw=raw.substring(begin);int end=raw.indexOf('"');if(end>=0)raw=raw.substring(0,end);end=raw.indexOf('\'');if(end>=0)raw=raw.substring(0,end);
+  n=0;int start=0;do{end=raw.indexOf('|',start);if(n>=32)return false;fields[n]=end<0?raw.substring(start):raw.substring(start,end);fields[n++].trim();start=end+1;}while(end>=0);
+  int roads=n>28?8:6;
+  if(n<25||fields[21+2*(roads-6)]!=workspace["lamps"][i]["serial"].as<String>()||channels(i)>roads){lamps[i].error="Seriennummer oder Kanalprofil passt nicht; kein Schreibzugriff";return false;}
+  if((fields[0]!="on"&&fields[0]!="off")||(fields[1]!="0"&&fields[1]!="1"))return false;
+  for(int k=2;k<5+2*roads;k++){
+    if(fields[k].isEmpty())return false;
+    for(size_t j=0;j<fields[k].length();j++){char c=fields[k][j];if((c<'0'||c>'9')&&!(k>=5+roads&&c==','))return false;}
+  }
+  char* tail=nullptr;String temp=fields[17+2*(roads-6)];lamps[i].temperature=strtof(temp.c_str(),&tail);
+  if(tail==temp.c_str()||*tail!=0||!isfinite(lamps[i].temperature))lamps[i].temperature=NAN;
   return true;
 }
-void output() {
-  if (WiFi.status() != WL_CONNECTED || config["serial"].isNull()) return;
-  int target[8] = {};
-  if (!desired(target)) return;
-  String fields[32]; int n;
-  if (!lampState(fields, n)) { lampOnline = false; logEvent(lastError); return; }
-  lampOnline = true; int roads = n > 28 ? 8 : 6;
-  logEvent("Output " + mode + "; observed power=" + fields[0] + ", mode=" + fields[1]);
-  String reply;
-  // Preserve firmware schedule, fan thresholds, open/close hours and timezone.
-  if (fields[1] != "0" || fields[0] != "on") {
-    String query = "save=onx0";
-    for (int i = 2; i < 5; i++) query += "x" + fields[i];
-    for (int i = 0; i < roads; i++) query += "x" + (i < channels() ? String(target[i]) : fields[5+i]);
-    for (int i = 0; i < roads; i++) { String row = fields[5+roads+i]; row.replace(',', 'y'); query += "x" + row; }
-    query += "x" + fields[19+2*(roads-6)] + "x" + fields[20+2*(roads-6)] + "x" + fields[23+2*(roads-6)];
-    if (!fetch(query, reply)) { logEvent(lastError); return; }
-  } else {
-    for (int i = 0; i < channels(); i++) {
-      if (!fetch(String(codes[i]) + "=" + String(lroundf(target[i] * 1023.0f / 100)), reply)) { logEvent(lastError); return; }
-      delay(1);
+void clockFor(int i,tm& local) {
+  // Each lamp can use its own POSIX timezone. All access is on the main loop.
+  String zone=workspace["lamps"][i]["timezone"]|defaultZone;setenv("TZ",zone.c_str(),1);tzset();time_t now=time(nullptr);localtime_r(&now,&local);
+}
+void levelsFrom(JsonVariantConst values,int* target,int n) {for(int j=0;j<n;j++)target[j]=values[j]|0;}
+void expire(int i) {
+  Lamp& lamp=lamps[i];
+  if(lamp.previewEnd&&expired(lamp.previewEnd)){lamp.previewEnd=0;lamp.force=true;logEvent(i,"Vorschau beendet: vorheriger Lichtmodus");}
+  if(lamp.until&&expired(lamp.until)){lamp.until=0;lamp.mode="schedule";lamp.scene="";lamp.force=true;logEvent(i,"Timer/HA-Lease beendet: Tagesprogramm");}
+}
+bool desired(int i,int* target) {
+  Lamp& lamp=lamps[i];expire(i);
+  if(lamp.previewEnd){for(int j=0;j<channels(i);j++)target[j]=lamp.previewLevels[j];return true;}
+  if(lamp.mode=="firmware")return false;
+  if(lamp.mode!="schedule"){
+    if(lamp.scene.length())levelsFrom(workspace["scenes"][lamp.scene]["levels"],target,channels(i));
+    else for(int j=0;j<channels(i);j++)target[j]=lamp.levels[j];return true;
+  }
+  if(time(nullptr)<1700000000){lamp.error="Warte auf gültige NTP-Uhrzeit";return false;}
+  String id=workspace["lamps"][i]["program"]|"";
+  JsonArray points=id.length()?workspace["programs"][id]["points"].as<JsonArray>():workspace["lamps"][i]["points"].as<JsonArray>();
+  if(points.size()<2)return false;
+  tm local;clockFor(i,local);int minute=local.tm_hour*60+local.tm_min,right=0;
+  for(size_t p=0;p<points.size();p++)if(points[p]["minute"].as<int>()>minute){right=p;break;}
+  JsonObject a=points[(right+points.size()-1)%points.size()],b=points[right];
+  int span=(b["minute"].as<int>()-a["minute"].as<int>()+1440)%1440;if(!span)return false;
+  float fraction=float((minute-a["minute"].as<int>()+1440)%1440)/span;
+  for(int j=0;j<channels(i);j++){int av=a["levels"][j]|0,bv=b["levels"][j]|0;target[j]=lroundf(av+(bv-av)*fraction);}return true;
+}
+void output(int i) {
+  Lamp& lamp=lamps[i];if(WiFi.status()!=WL_CONNECTED)return;int target[8]={};if(!lamp.releaseRequested&&!desired(i,target))return;
+  String fields[32];int n;
+  if(!lampState(i,fields,n)){lamp.online=false;if(lamp.error.isEmpty())lamp.error="Unbekanntes Lampenformat; kein Schreibzugriff";logEvent(i,lamp.error);return;}
+  lamp.online=true;int roads=n>28?8:6;String reply;
+  logEvent(i,"Ausgabe "+lamp.mode+"; power="+fields[0]+", mode="+fields[1]);
+  if(lamp.releaseRequested||fields[1]!="0"||fields[0]!="on"){
+    String query=lamp.releaseRequested?"save=onx1":"save=onx0";for(int k=2;k<5;k++)query+="x"+fields[k];
+    for(int j=0;j<roads;j++)query+="x"+(!lamp.releaseRequested&&j<channels(i)?String(target[j]):fields[5+j]);
+    for(int j=0;j<roads;j++){String row=fields[5+roads+j];row.replace(',','y');query+="x"+row;}
+    query+="x"+fields[19+2*(roads-6)]+"x"+fields[20+2*(roads-6)]+"x"+fields[23+2*(roads-6)];
+    if(!fetch(i,query,reply)){logEvent(i,lamp.error);return;}
+  }else for(int j=0;j<channels(i);j++)if(!fetch(i,String(codes[j])+"="+String(lroundf(target[j]*1023.f/100)),reply)){logEvent(i,lamp.error);return;}
+  if(lamp.releaseRequested){lamp.mode="firmware";lamp.releaseRequested=false;}else for(int j=0;j<channels(i);j++)lamp.sent[j]=target[j];lamp.error="";
+}
+double deadline(uint32_t end) {return end&&!expired(end)?double(time(nullptr))+double(end-millis())/1000:0;}
+void status() {
+  DynamicJsonDocument doc(18000);
+  doc["version"]=BRIDGE_VERSION;doc["now_epoch"]=double(time(nullptr));doc["clock_valid"]=time(nullptr)>=1700000000;doc["ip"]=WiFi.localIP().toString();
+  JsonObject update=doc.createNestedObject("update");update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;
+  JsonArray lights=doc.createNestedArray("lights");
+  for(int i=0;i<count();i++){
+    expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
+    state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
+    if(lamp.mode!="firmware")state["program"]=workspace["lamps"][i]["program"];if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
+    if(lamp.scene.length()) {JsonObject scene=state.createNestedObject("scene");scene["id"]=lamp.scene;if(lamp.until)scene["until"]=deadline(lamp.until);else scene["until"]=nullptr;scene["manual"]=lamp.mode=="manual";}
+    if(lamp.previewEnd){JsonObject preview=state.createNestedObject("preview");preview["until"]=deadline(lamp.previewEnd);}
+    if(lamp.mode!="firmware"){JsonArray sent=state.createNestedArray("sent");for(int j=0;j<channels(i);j++)sent.add(lamp.sent[j]);}
+    JsonArray log=state.createNestedArray("log");unsigned start=lamp.logCount>24?lamp.logCount-24:0;
+    for(unsigned j=start;j<lamp.logCount;j++){JsonObject event=log.createNestedObject();event["at"]=String(j+1);event["message"]=lamp.logs[j%24];}
+  }
+  // Preserve the first fixture's REST contract used by the HA lease package.
+  if(count()){
+    doc["mode"]=lamps[0].previewEnd?"preview":lamps[0].mode;doc["lamp_online"]=lamps[0].online;doc["error"]=lamps[0].error;if(isfinite(lamps[0].temperature))doc["temperature"]=lamps[0].temperature;
+    uint32_t end=lamps[0].previewEnd?lamps[0].previewEnd:lamps[0].until;doc["remaining_seconds"]=end&&!expired(end)?(end-millis()+999)/1000:0;
+  }
+  // Stream the shared library once, avoiding a 4x copy of the JSON in RAM.
+  size_t size=measureJson(doc)+measureJson(workspace)+13;
+  server.setContentLength(size);server.send(200,"application/json","");
+  WiFiClient client=server.client();client.print("{\"workspace\":");serializeJson(workspace,client);client.print(',');
+  String state;serializeJson(doc,state);client.print(state.substring(1));
+}
+void studio(JsonDocument& msg) {
+  String action=msg["action"]|"",kind=msg["kind"]|"programs",id=msg["item_id"]|"",serial=msg["serial"]|"";
+  if(kind!="programs"&&kind!="scenes"){fail("Ungültige Bibliothek");return;}
+  bool targets[MAX_LAMPS]={};int targetCount=0;
+  if(serial.startsWith("group:")){
+    JsonVariant group=workspace["groups"][serial.substring(6)];if(group.isNull()){fail("Gruppe nicht gefunden");return;}
+    for(int i=0;i<count();i++)for(JsonVariant member:group["serials"].as<JsonArray>())if(member.as<String>()==workspace["lamps"][i]["serial"].as<String>()){targets[i]=true;targetCount++;}
+  }else for(int i=0;i<count();i++)if(serial==workspace["lamps"][i]["serial"].as<String>()){targets[i]=true;targetCount++;}
+  if(action=="save"||action=="delete"||action=="group_save"||action=="group_delete"){
+    DynamicJsonDocument next(65536);next.set(workspace);
+    if(action.startsWith("group_")) {
+      if(id.length()&&!next["groups"].containsKey(id)){fail("Gruppe wurde gelöscht");return;}
+      if(action=="group_delete")next["groups"].remove(id);
+      else{if(!id.length())id=newId();next["groups"][id]["name"]=msg["name"];next["groups"][id]["serials"]=msg["serials"];}
+    }else{
+      if(id.length()&&!next[kind].containsKey(id)){fail("Eintrag wurde gelöscht");return;}
+      if(action=="delete"){
+        for(int i=0;i<count();i++)if((kind=="programs"&&workspace["lamps"][i]["program"].as<String>()==id)||(kind=="scenes"&&lamps[i].scene==id)){fail("Bitte zuerst das aktive Profil beenden");return;}
+        next[kind].remove(id);
+      }else{if(!id.length())id=newId();next[kind][id]=msg["item"];}
     }
+    if(persist(next)){for(int i=0;i<count();i++)lamps[i].force=true;ok();}return;
   }
-  for (int i = 0; i < channels(); i++) sent[i] = target[i];
-  lastError = "";
+  if(!targetCount){fail("Lampe nicht gefunden");return;}
+  if(action=="activate"||action=="manual"){
+    if(!workspace[kind].containsKey(id)||(action=="manual"&&kind!="scenes")){fail("Bitte ein gespeichertes Profil wählen");return;}
+    int minutes=msg["duration"]|15;if(minutes<1||minutes>60){fail("Dauer: 1–60 Minuten");return;}
+    if(kind=="programs") {DynamicJsonDocument next(65536);next.set(workspace);for(int i=0;i<count();i++)if(targets[i])next["lamps"][i]["program"]=id;if(!persist(next))return;}
+    for(int i=0;i<count();i++)if(targets[i]){Lamp& lamp=lamps[i];lamp.releaseRequested=false;lamp.previewEnd=0;lamp.scene=kind=="scenes"?id:"";lamp.mode=kind=="programs"?"schedule":action=="manual"?"manual":"scene";lamp.until=kind=="scenes"&&action!="manual"?millis()+minutes*60000UL:0;lamp.force=true;logEvent(i,"Aktiviert: "+id);}ok();return;
+  }
+  if(action=="preview"){
+    int seconds=msg["preview_seconds"]|60;if(seconds<1||seconds>3600||!validLevels(msg["levels"])){fail("Ungültige Vorschau");return;}
+    for(int i=0;i<count();i++)if(targets[i]){levelsFrom(msg["levels"],lamps[i].previewLevels,channels(i));lamps[i].previewEnd=millis()+seconds*1000UL;lamps[i].force=true;}ok();return;
+  }
+  if(action!="preview_cancel"&&action!="resume"&&action!="release"){fail("Unbekannte Aktion");return;}
+  for(int i=0;i<count();i++)if(targets[i]){lamps[i].previewEnd=0;if(action=="resume"||action=="release"){lamps[i].mode="schedule";lamps[i].scene="";lamps[i].until=0;lamps[i].releaseRequested=action=="release";}lamps[i].force=true;}ok();
 }
+void checkUpdate() {
+  lastUpdateCheck=millis();WiFiClientSecure client;client.setInsecure();HTTPClient http;http.setConnectTimeout(1200);http.setTimeout(2000);
+  if(!http.begin(client,String(installerUrl)+"bridge-update.json"))return;int code=http.GET();String raw=code==200?http.getString():"";http.end();
+  DynamicJsonDocument data(1024);if(code!=200||deserializeJson(data,raw)){updateError="Update-Prüfung derzeit nicht erreichbar";return;}
+  String remote=data["version"]|"";int a,b,c,x,y,z;
+  if(sscanf(remote.c_str(),"%d.%d.%d",&a,&b,&c)!=3||sscanf(BRIDGE_VERSION,"%d.%d.%d",&x,&y,&z)!=3)return;
+  latestVersion=remote;updateAvailable=a>x||(a==x&&(b>y||(b==y&&c>z)));updateError="";
+}
+void portal(){server.sendHeader("Location","http://192.168.4.1/",true);server.send(302,"text/plain","");}
 void setup() {
-  Serial.begin(115200); prefs.begin("reefbridge", false);
-  apPassword = prefs.getString("ap_pass", "");
-  if (apPassword.isEmpty()) { apPassword = defaultApPassword; prefs.putString("ap_pass", apPassword); }
-  deserializeJson(config, prefs.getString("config", "{}"));
-  WiFi.mode(WIFI_AP_STA);
-  String ssid = "ReefBridge-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-  WiFi.softAP(ssid.c_str(), apPassword.c_str());
-  dnsServer.start(53, "*", WiFi.softAPIP());
-  WiFi.begin(prefs.getString("ssid", "").c_str(), prefs.getString("wifi_pass", "").c_str());
-  Serial.println("Setup SSID: " + ssid + "\nSetup password: " + apPassword);
-  Serial.println("Setup: captive portal / http://192.168.4.1  |  Serial commands: INFO");
-  applyClock();
-  server.on("/", HTTP_GET, [] { server.send_P(200, "text/html; charset=utf-8", (const char*)WEB_UI, sizeof(WEB_UI)); });
-  server.on("/generate_204", HTTP_GET, [] { server.sendHeader("Location", "http://192.168.4.1/", true); server.send(302, "text/plain", ""); });
-  server.on("/hotspot-detect.html", HTTP_GET, [] { server.send_P(200, "text/html; charset=utf-8", (const char*)WEB_UI, sizeof(WEB_UI)); });
-  server.on("/connecttest.txt", HTTP_GET, [] { server.sendHeader("Location", "http://192.168.4.1/", true); server.send(302, "text/plain", ""); });
-  server.on("/api/status", HTTP_GET, [] {
-    DynamicJsonDocument doc(16384);
-    doc["version"] = BRIDGE_VERSION; doc["mode"] = mode; doc["lamp_online"] = lampOnline;
-    doc["clock_valid"] = time(nullptr) >= 1700000000; doc["ip"] = WiFi.localIP().toString();
-    doc["remaining_seconds"] = overrideEnd && !expired(overrideEnd) ? (overrideEnd - millis() + 999) / 1000 : 0;
-    if (isfinite(temperature)) doc["temperature"] = temperature;
-    doc["error"] = lastError; doc["config"].set(config.as<JsonObject>());
-    JsonObject update = doc.createNestedObject("update");
-    update["available"] = updateAvailable; update["latest"] = latestVersion;
-    update["installer_url"] = updateUrl;
-    JsonArray values = doc.createNestedArray("sent"); for (int i=0;i<channels();i++) values.add(sent[i]);
-    JsonArray log = doc.createNestedArray("log"); unsigned start = eventCount > 80 ? eventCount-80 : 0;
-    for (unsigned i=start;i<eventCount;i++) log.add(events[i%80]);
-    String json; serializeJson(doc, json); server.send(200, "application/json", json);
+  Serial.begin(115200);prefs.begin("reefbridge",false);fsReady=LittleFS.begin(false);
+  // Initialize only on first use; a later mount failure must retain the data.
+  if(!fsReady&&!prefs.getBool("studio_fs",false)){Serial.println("Initializing Studio filesystem");fsReady=LittleFS.begin(true);}
+  if(fsReady)prefs.putBool("studio_fs",true);
+  loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");
+  WiFi.mode(WIFI_AP_STA);String ssid="ReefBridge-"+String((uint32_t)ESP.getEfuseMac(),HEX);WiFi.softAP(ssid.c_str(),apPassword.c_str());dnsServer.start(53,"*",WiFi.softAPIP());
+  WiFi.begin(prefs.getString("ssid","").c_str(),prefs.getString("wifi_pass","").c_str());configTime(0,0,"pool.ntp.org","time.cloudflare.com");
+  Serial.println("Setup: http://192.168.4.1 | AP password: "+apPassword);
+  server.on("/",HTTP_GET,[]{server.send_P(200,"text/html; charset=utf-8",(const char*)WEB_UI,sizeof(WEB_UI));});
+  for(const char* probe:{"/generate_204","/hotspot-detect.html","/connecttest.txt"})server.on(probe,HTTP_GET,portal);
+  server.on("/api/status",HTTP_GET,status);
+  server.on("/api/studio",HTTP_POST,[]{DynamicJsonDocument msg(16000);if(body(msg))studio(msg);});
+  server.on("/api/fixture",HTTP_POST,[]{
+    DynamicJsonDocument msg(2048);if(!body(msg))return;int index=msg["index"]|-1;
+    if(index<0)index=count();if(index>count()||index>=MAX_LAMPS||!validFixture(msg.as<JsonVariant>())){fail("Bitte Name, IP, Seriennummer, Zeitzone und 6/8 Kanäle prüfen (maximal vier Lampen).");return;}
+    DynamicJsonDocument next(65536);next.set(workspace);JsonObject lamp;
+    if(index==count()){lamp=next["lamps"].createNestedObject();fallbackPoints(lamp);}else lamp=next["lamps"][index].as<JsonObject>();
+    String oldSerial=lamp["serial"]|"";
+    for(const char* key:{"name","serial","lamp_ip","channels","timezone"})lamp[key]=msg[key];
+    for(JsonPair pair:next["groups"].as<JsonObject>())for(JsonVariant member:pair.value()["serials"].as<JsonArray>())if(member.as<String>()==oldSerial)member.set(msg["serial"]);
+    if(persist(next)){lamps[index]=Lamp();ok();}
   });
-  server.on("/api/wifi", HTTP_POST, [] {
-    DynamicJsonDocument doc(1024); if (!readBody(doc)) return;
-    String ssid = doc["ssid"] | "", pass = doc["password"] | "";
-    if (ssid.isEmpty() || ssid.length()>32 || pass.length()>63) { fail("Invalid WiFi credentials"); return; }
-    prefs.putString("ssid", ssid); prefs.putString("wifi_pass", pass);
-    server.send(200, "application/json", "{\"ok\":true}"); WiFi.begin(ssid.c_str(), pass.c_str());
+  server.on("/api/restore",HTTP_POST,[]{DynamicJsonDocument next(65536);if(body(next)&&persist(next)){for(int i=0;i<MAX_LAMPS;i++)lamps[i]=Lamp();ok();}});
+  server.on("/api/wifi",HTTP_POST,[]{DynamicJsonDocument msg(1024);if(!body(msg))return;String ssid=msg["ssid"]|"",pass=msg["password"]|"";if(!ssid.length()||ssid.length()>32||pass.length()>63){fail("WLAN-Daten ungültig");return;}prefs.putString("ssid",ssid);prefs.putString("wifi_pass",pass);ok();WiFi.begin(ssid.c_str(),pass.c_str());});
+  server.on("/api/control",HTTP_POST,[]{
+    DynamicJsonDocument msg(1024);if(!body(msg))return;if(!count()){fail("Bitte zuerst eine Lampe einrichten");return;}
+    String action=msg["action"]|"";Lamp& lamp=lamps[0];int seconds=msg["seconds"]|90;
+    if(action=="resume"){lamp.mode="schedule";lamp.scene="";lamp.until=lamp.previewEnd=0;lamp.force=true;ok();return;}
+    if(action!="lease"&&action!="preview"&&action!="manual"){fail("Unbekannte Aktion");return;}
+    if(!validLevels(msg["levels"],channels(0))||seconds<1||seconds>(action=="lease"?90:3600)){fail("Pegel/Dauer ungültig");return;}
+    if(action=="lease"&&lamp.mode=="manual"){fail("Manueller Modus aktiv",409);return;}
+    if(action=="preview"){levelsFrom(msg["levels"],lamp.previewLevels,channels(0));lamp.previewEnd=millis()+seconds*1000UL;}
+    else{levelsFrom(msg["levels"],lamp.levels,channels(0));lamp.mode=action;lamp.scene="";lamp.until=action=="manual"?0:millis()+seconds*1000UL;lamp.previewEnd=0;}lamp.force=true;ok();
   });
-  server.on("/api/config", HTTP_POST, [] {
-    DynamicJsonDocument doc(16384); if (!readBody(doc)) return;
-    if (!validConfig(doc)) { fail("Invalid configuration: sorted points, IP, serial and channel levels required"); return; }
-    config.set(doc); saveConfig(); applyClock(); forceOutput = true; logEvent("Configuration saved");
-    server.send(200, "application/json", "{\"ok\":true}");
-  });
-  server.on("/api/control", HTTP_POST, [] {
-    DynamicJsonDocument doc(2048); if (!readBody(doc)) return;
-    if (config["serial"].isNull()) { fail("Configure a lamp first",409); return; }
-    String action = doc["action"] | "";
-    if (action == "resume") { mode="schedule"; overrideEnd=0; }
-    else {
-      if (!validLevels(doc["levels"], channels())) { fail("Invalid channel levels"); return; }
-      if (action != "preview" && action != "manual" && action != "lease") { fail("Unknown action"); return; }
-      if (mode == "manual" && action == "lease") { fail("Manual mode owns the output",409); return; }
-      int seconds = doc["seconds"] | (action == "lease" ? 90 : 60);
-      if (seconds < 1 || seconds > (action == "lease" ? 90 : 3600)) { fail("Invalid duration"); return; }
-      for (int i=0;i<channels();i++) overrideLevels[i]=doc["levels"][i];
-      mode=action; overrideEnd=action == "manual" ? 0 : millis()+uint32_t(seconds)*1000;
-    }
-    forceOutput=true; logEvent("Control: " + mode); server.send(200,"application/json","{\"ok\":true}");
-  });
-  server.onNotFound([] {
-    // The AP DNS points all captive-portal probes here. Redirect them to the
-    // local dashboard so iOS, Android, macOS and Windows can open it directly.
-    if (WiFi.softAPgetStationNum()) {
-      server.sendHeader("Location", "http://192.168.4.1/", true);
-      server.send(302, "text/plain", "");
-      return;
-    }
-    fail("Not found",404);
-  }); server.begin();
-  logEvent("Bridge booted: local schedule; temporary overrides cleared");
+  server.onNotFound([]{if(server.uri().startsWith("/api/")){fail("Schnittstelle nicht gefunden",404);return;}if(WiFi.softAPgetStationNum())portal();else fail("Nicht gefunden",404);});server.begin();
 }
 void loop() {
-  dnsServer.processNextRequest();
-  server.handleClient();
-  if (Serial.available()) { String command=Serial.readStringUntil('\n'); command.trim();
-    if(command=="INFO") Serial.println("AP password: "+apPassword+"\nIP: "+WiFi.localIP().toString());
-  }
-  if (WiFi.status()==WL_CONNECTED) {
-    static bool mdns=false; if(!mdns) mdns=MDNS.begin("reefbridge");
-    // Setup AP shuts down after the first successful station connection.
-    static bool apStopped=false; if(!apStopped) { dnsServer.stop(); WiFi.softAPdisconnect(true); apStopped=true; }
-    if (!lastUpdateCheck || millis() - lastUpdateCheck >= 6UL * 60UL * 60UL * 1000UL) checkForUpdate();
-  } else if(millis()-lastReconnect>30000) { lastReconnect=millis(); WiFi.reconnect(); }
-  if (forceOutput || millis()-lastOutput>=30000 || (overrideEnd && expired(overrideEnd))) {
-    forceOutput=false; lastOutput=millis(); output();
-  }
+  dnsServer.processNextRequest();server.handleClient();
+  if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nIP: "+WiFi.localIP().toString());}
+  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");dnsServer.stop();WiFi.softAPdisconnect(true);started=true;}
+    // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
+    // between fixtures; each fixture has independent mode, timers and clock.
+    static int cursor=0;for(int n=0;n<count();n++){int i=(cursor+n)%count();expire(i);if(lamps[i].force||millis()-lamps[i].lastOutput>=30000){lamps[i].force=false;lamps[i].lastOutput=millis();output(i);cursor=(i+1)%count();break;}}
+    if(!lastUpdateCheck||millis()-lastUpdateCheck>=6UL*60*60*1000)checkUpdate();
+  }else if(millis()-lastReconnect>30000){lastReconnect=millis();WiFi.reconnect();}
   delay(2);
 }

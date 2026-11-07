@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.21.1] - 2026-11-07
+
+### Changed
+
+- Reef Bridge 0.2.0 verwendet jetzt denselben Reef-Studio-Editor wie Home Assistant. Design, Programm-/Szeneneditor, Rampen-Assistent, Gesamtintensität, Gruppenbedienung und Diagnose werden aus einer gemeinsamen Quelldatei gebaut.
+- CI prüft die gemeinsame Studio-Version; Änderungen am gemeinsamen Panel lösen auch den Firmware-Build der Bridge aus.
+
+### Fixed
+
+- Countdown läuft auch zwischen zwei Statusabfragen sekündlich weiter.
+
 ## [0.21.0] - 2026-11-07
 
 ### Changed

@@ -2,9 +2,9 @@ name: Reef Bridge firmware and installer
 on:
   push:
     branches: [main]
-    paths: ['reef-bridge/**', '.github/workflows/bridge.yml']
+    paths: ['reef-bridge/**', 'custom_components/aipai_light/panel/reef-studio.js', 'custom_components/aipai_light/manifest.json', 'tools/validate_studio_sync.py', '.github/workflows/bridge.yml']
   pull_request:
-    paths: ['reef-bridge/**', '.github/workflows/bridge.yml']
+    paths: ['reef-bridge/**', 'custom_components/aipai_light/panel/reef-studio.js', 'custom_components/aipai_light/manifest.json', 'tools/validate_studio_sync.py', '.github/workflows/bridge.yml']
   workflow_dispatch:
 
 concurrency:
@@ -18,10 +18,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: pip install platformio==6.1.18 esptool==4.8.1
+      - run: python tools/validate_studio_sync.py
       - run: pio run -d reef-bridge
       - name: Assemble factory firmware
         run: |

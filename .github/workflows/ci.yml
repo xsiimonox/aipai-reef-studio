@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -19,10 +21,20 @@ jobs:
           node-version: "22"
       - name: Validate release metadata
         run: python tools/validate_release.py
+      - name: Validate shared Studio and Bridge versions
+        run: python tools/validate_studio_sync.py
       - name: Compile Python integration
         run: python -m compileall -q custom_components/aipai_light tools
       - name: Validate Reef Studio JavaScript
         run: node --check custom_components/aipai_light/panel/reef-studio.js
+      - name: Install browser test dependency
+        run: |
+          npm install --no-save --package-lock=false playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Check both Studio transports
+        run: |
+          node tools/preview_studio.cjs
+          node reef-bridge/tools/preview.cjs
 
   hassfest:
     name: Home Assistant manifest (hassfest)

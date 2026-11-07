@@ -1,131 +1,97 @@
 # AIPAI Reef Bridge für ESP32
 
-Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant erforderlich. Optional kann Home Assistant über die lokale Bridge-API steuern. Dies ist **Version 0.1.2, ein experimenteller Prototyp**. Kompilieren und simulierte Prüfungen ersetzen keinen Dauertest am echten ESP32 und der Lampe.
+Firmware **0.2.0** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
 
-![Architektur und Fallback](docs/architecture.svg)
+![Reef Studio auf der Bridge](docs/bridge-desktop.png)
 
-<details><summary>Oberfläche ansehen (echte Browseraufnahme mit simulierten Beispieldaten)</summary>
+<details><summary>Mobile Ansicht und Architektur</summary>
 
-![Bridge Desktop-Oberfläche mit Tagesprofil, Spektrum und Einrichtung](docs/bridge-desktop.png)
+<img src="docs/bridge-mobile.png" width="300" alt="Reef Studio auf dem Smartphone">
 
-<img src="docs/bridge-mobile.png" width="300" alt="Mobile Ansicht der Reef Bridge">
+![Architektur und HA-Fallback](docs/architecture.svg)
 
 </details>
 
-## Was die erste Version kann
+## Gemeinsame Bedienung
 
-- Eine Lampe pro Bridge, sechs oder acht physische Kanäle.
-- Ein lokal gespeichertes Tagesprogramm mit 2–48 Zeitpunkten und linearen Übergängen, auch über Mitternacht.
-- Bis zu 16 gespeicherte Szenen, Regler-Vorschau, zeitbegrenzte Anzeige für 1–60 Minuten, dauerhafter manueller Modus und sofortige Rückkehr zum Tagesprofil.
-- Gerätename/IP, Kanalprofil, Seriennummer-Prüfung, POSIX-Zeitzone mit Sommerzeit, NTP, Temperatur und Diagnoseprotokoll.
-- Programme und WLAN bleiben im Flash; nach Neustart läuft das Tagesprogramm weiter, sobald eine gültige Uhrzeit vorliegt. Temporäre/manuelle Overrides werden beim Neustart aufgehoben.
-- Weboberfläche liegt vollständig in der Firmware; Backup/Import als JSON, ohne API-Token.
-- Das ReefBridge-WLAN stellt ein Captive Portal bereit: Nach dem Verbinden öffnet das Betriebssystem die Oberfläche normalerweise direkt. Falls es nicht automatisch erscheint, funktioniert immer `http://192.168.4.1`.
-- Automatische Update-Suche: Nach erfolgreicher WLAN-Verbindung und anschließend alle sechs Stunden prüft die Bridge die veröffentlichte Bridge-Firmware. Ein Hinweis mit Link zum Browser-Installer erscheint im Dashboard; ein Flash-Vorgang geschieht erst nach bewusster Bestätigung.
-- Home Assistant steuert über eine Lease: spätestens 90 Sekunden nach der letzten Bestätigung übernimmt das lokale Tagesprogramm.
+- Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und proportionaler Gesamtintensitätsregler.
+- Gemeinsame lokale Programm- und Szenenbibliothek für alle Lampen dieser Bridge. Neue Einträge, Bearbeiten, Duplizieren, Löschen und Aktivieren. Bis 32 Programme und 32 Szenen, insgesamt maximal 48 KB JSON bzw. die verfügbare Parser-Kapazität; größere Änderungen werden mit Fehlermeldung abgelehnt.
+- Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Die Gruppe zeigt die gemeinsam vorhandenen Kanäle; MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
+- Programme laufen lokal, ohne offenen Browser oder Home Assistant. Jede Lampe hat einen eigenen aktiven Eintrag und eigene Timer. Ein Profilwechsel einer Lampe ändert nicht automatisch die Auswahl einer anderen Lampe.
+- Temporäre Szenen 1–60 Minuten, dauerhafter manueller Modus, Countdown und Abbruch. Regler einer einzelnen Lampe starten eine Vorschau für eine Minute im Programmeditor bzw. fünf Minuten im Szeneneditor. Gruppen lassen sich über die Uhrzeit-Vorschau oder eine gespeicherte Szene ansehen.
+- Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft Firmware-Updates nach WLAN-Verbindung und alle sechs Stunden. Installation bewusst über den USB-Installer; OTA ist noch nicht implementiert.
+- Beim Neustart bleiben Bibliothek, Lampen, Gruppen und aktive Tagesprogramme gespeichert. Szenen, manuelle Eingriffe und Vorschauen enden; nach gültiger NTP-Zeit übernimmt das lokale Tagesprofil.
 
-Mehrere Programmbibliotheken, Lampengruppen, OTA-Installation, automatische Lampensuche, HA-Autodiscovery und die vollständige Reef-Studio-HA-Oberfläche sind noch **nicht** enthalten. Die neue Bridge-Oberfläche ist bewusst ein eigener erster Implementierungsstand.
+„Synchron gehalten“ bedeutet: Beide Pakete bauen den Editor direkt aus `custom_components/aipai_light/panel/reef-studio.js`. Der Adapter enthält nur Bridge-Transport und Hardwareeinrichtung. Es gibt keine zweite Kopie der Layouts oder Editoren. CI prüft die Studio-Version und baut die Bridge auch bei Änderungen am gemeinsamen Panel. Bereits geflashte Geräte erhalten neue Funktionen erst mit einem Firmware-Update. Die Bibliotheken einer HA-Installation und einer Bridge werden **nicht automatisch über das Netz miteinander abgeglichen**.
 
-## Hardware
+## Hardware und Installation
 
-Für das bereitgestellte Firmware-Abbild: **klassischer ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**, USB-Datenkabel und USB-Netzteil. Keine Verbindung mit der Elektronik der Lampe: ESP und Lampe kommunizieren im selben 2,4-GHz-WLAN. Keine Pins an die Lampe anschließen.
+Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**. ESP8266/NodeMCU/D1 mini und ESP32-C3/S2/S3 werden vom bereitgestellten Abbild nicht unterstützt. Keine Pins an die Lampe anschließen; Bridge und Lampen sprechen über das 2,4-GHz-WLAN.
 
-ESP32-C3, S2, S3 und andere Flashgrößen brauchen separate Board-Konfigurationen und Firmware-Abbilder. Das klassische ESP32-Abbild ist dafür ungeeignet. ESP8266/D1 mini wird hier nicht unterstützt.
+1. [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) in Chrome oder Edge auf Windows/macOS öffnen und den ESP32 mit einem USB-Datenkabel verbinden. Safari/Firefox unterstützen Web Serial nicht. Bei Bedarf CP210x-/CH340-Treiber installieren und BOOT beim Verbinden gedrückt halten.
+2. Firmware installieren. Vor einem Update Backup herunterladen; „Erase device“ löscht auch WLAN und Einstellungen.
+3. Mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
+4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.4.1** aufrufen. Kein API-Token nötig.
+5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Die neue Bridge-IP im Router öffnen; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
+6. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
+7. Tagesprogramm grafisch erstellen, speichern und für Lampe oder Gruppe aktivieren. Neu hinzugefügte Lampen verwenden bis zur ersten Programmaktivierung ein ausgeschaltetes Fallback-Profil. Vor Betrieb die gewünschten Kanalwerte prüfen.
 
-## Flashen auf Windows und macOS
+Beim ersten Start ab 0.2.0 wird eine bestehende 0.1-Konfiguration mitsamt Tagesplan und Szenen automatisch übernommen. Die alte Preferences-Konfiguration bleibt als Wiederherstellungskopie erhalten. Neue Daten werden in LittleFS über eine temporäre Datei gespeichert. Ein Mount-Fehler nach der ersten Initialisierung führt nicht zu automatischem Formatieren.
 
-Der [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) wird aus GitHub Actions bereitgestellt. Chrome oder Edge und eine HTTPS-Seite sind erforderlich. Safari/Firefox können Web Serial nicht verwenden. Auf dem Computer ist keine Python-Installation notwendig.
+Terminal-Alternative: Unter GitHub Actions → „Reef Bridge firmware and installer“ das Artefakt `reef-bridge-esp32-factory` herunterladen/entpacken. Windows: `py -m pip install esptool==4.8.1`, danach `py flash.py --port COM3 --firmware firmware.bin`. macOS: virtuelle Python-Umgebung anlegen, `pip install esptool==4.8.1`, danach `python flash.py --port /dev/cu.usbserial-0001 --firmware firmware.bin`. Port anpassen. Das Factory-Abbild enthält Bootloader und Partitionstabelle.
 
-1. ESP32 per **Datenkabel** verbinden. Bei fehlendem USB-Port eventuell den passenden CP210x-/CH340-Treiber des Boardherstellers installieren.
-2. Im Browser-Installer „Connect“ / „Install“ wählen und den USB-Port auswählen. Nur das Abbild für klassischen ESP32 verwenden.
-3. Bei Verbindungsproblemen BOOT während des Verbindungsaufbaus halten, gegebenenfalls EN/RESET kurz drücken.
-4. Das Setup-WLAN verwendet bei einer **neuen Installation** das Standardpasswort **`ReefBridge2026!`**. Die Konsole mit 115200 Baud öffnen und `INFO` mit Enter senden, falls das Passwort geprüft werden soll.
-5. Mit `ReefBridge-…` und dem Passwort `ReefBridge2026!` verbinden. Das Captive Portal öffnet die Oberfläche normalerweise von selbst. Andernfalls im Browser `http://192.168.4.1` aufrufen. Ein API-Token ist nicht erforderlich.
-6. Heim-WLAN unter „WLAN einrichten“ speichern. Nach Verbindung schließt das Setup-WLAN. Die Bridge-IP im Router öffnen; bei mehreren Bridges immer die jeweilige IP verwenden.
-7. Lampen-IP und **korrekte Seriennummer** eintragen. Kanalprofil wählen, Tagespunkte festlegen und speichern. Der Controller prüft vor jedem Schreibzyklus die Seriennummer.
+## Zeit und Ausfälle
 
-Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Das Standardpasswort gilt nur, solange noch kein Passwort im Flash gespeichert ist: Bereits eingerichtete Bridges behalten ihr bisheriges Passwort. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
+Nach jedem Kaltstart wird eine gültige NTP-Zeit benötigt, standardmäßig mit Internet. Ohne gültige Zeit schreibt die Bridge keinen zeitabhängigen Tagesplan. Einmal synchronisiert läuft die Uhr bis zum Neustart lokal weiter. Lokaler NTP-Server/RTC-Konfiguration ist noch nicht enthalten.
 
-### Terminal-Installer als Alternative
+Die Bridge sendet Zielwerte alle 30 Sekunden erneut. Netzwerktransaktionen zu den Lampen laufen nacheinander, nicht gleichzeitig; HTTP-Laufzeiten können den tatsächlichen Lichtwechsel verzögern. Timer werden unabhängig je Lampe verwaltet. Lüftergrenzen und lampeneigene Stundenkurven werden bei Moduswechseln erhalten. Seriennummer und Protokollformat werden vor jedem Schreibzyklus überprüft.
 
-Unter GitHub → Actions → „Reef Bridge firmware and installer“ den erfolgreichen Build öffnen und `reef-bridge-esp32-factory` herunterladen/entpacken. Es enthält `firmware.bin` und `flash.py`. Das ist ein zusammengefügtes Factory-Abbild inklusive Bootloader und Partitionstabelle.
+Beim Ausfall von HA läuft die Bridge weiter. Beim Ausfall der Bridge selbst gibt es **keinen garantierten automatischen Wechsel zum lampeneigenen Tagesplan**, da die Lampen für die feine Steuerung im manuellen Firmwaremodus stehen. „Lampeneigenen Modus wiederherstellen“ wechselt bewusst zurück zur Stundenkurve der Lampe. Nach Bridge-Neustart übernimmt wieder das lokale Bridge-Tagesprofil. Hersteller-App oder direkt schreibende HA-Integration während des Bridge-Betriebs nicht parallel zum Steuern verwenden.
 
-Windows PowerShell:
+## Optionale Home-Assistant-Anbindung
 
-```powershell
-py -m pip install esptool==4.8.1
-py flash.py --port COM3 --firmware firmware.bin
-```
+HA → Bridge → Lampe. Der bestehende REST-Lease-Einstieg steuert die **erste eingerichtete Lampe**; weitere Lampen und Gruppen sind über die Studio-API verfügbar.
 
-macOS Terminal:
-
-```sh
-python3 -m venv .flash-venv
-source .flash-venv/bin/activate
-python -m pip install esptool==4.8.1
-ls /dev/cu.*
-python flash.py --port /dev/cu.usbserial-0001 --firmware firmware.bin
-```
-
-Port durch den tatsächlichen Gerätenamen ersetzen. Flashen eines Factory-Abbilds kann die Installation überschreiben; vor Updates ein Backup exportieren. Der Browser bietet für Neuinstallationen das vollständige Löschen an, dabei gehen auch WLAN-Daten verloren.
-
-## Zeit und Verhalten bei Ausfällen
-
-Der ESP32 benötigt nach jedem Kaltstart einmal eine gültige NTP-Zeit. Dafür ist standardmäßig Internet nötig. Ohne gültige Uhrzeit schreibt er **kein Tagesprogramm** an die Lampe. Ist die Zeit einmal synchronisiert, läuft die lokale Uhr ohne Internet weiter, bis Strom/Neustart sie zurücksetzt. Komplett netzunabhängiger Kaltstart erfordert später einen lokalen NTP-Server oder RTC-Erweiterung.
-
-Die Bridge sendet alle 30 Sekunden Zielwerte erneut. HTTP-Fehler erscheinen im Diagnosebereich. Bei fehlendem WLAN oder ausgeschaltetem ESP32 kann die Bridge die Lampe nicht steuern; es gibt keine garantierte Rückkehr zu einem sicheren Zustand in der Lampenfirmware. Der ESP32 muss für zeitgesteuerte Szenen dauerhaft laufen. Lüftergrenzen und Firmware-Tagesdaten werden bei einem nötigen Wechsel in den manuellen Firmwaremodus übernommen.
-
-„Tagesprofil fortsetzen“ meint das **auf der Bridge gespeicherte** Programm. Eine Hersteller-App oder eine zweite direkt schreibende HA-Integration kann weiterhin konkurrieren. Für Bridge-Betrieb die bisherige direkte AIPAI-Steuerung deaktivieren.
-
-## Home Assistant optional einbinden
-
-Empfohlener Aufbau: HA → Bridge → Lampe. Die Bridge bleibt jederzeit der einzige direkte Schreiber. HA-Ausfall wird über eine befristete Lease erkannt, nicht durch unzuverlässiges Ping.
-
-1. Inhalt von [home-assistant/reef_bridge.yaml](home-assistant/reef_bridge.yaml) nach `/config/packages/reef_bridge.yaml` kopieren.
-2. In `configuration.yaml` unter dem bestehenden `homeassistant:`-Abschnitt aktivieren:
-
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
-
-3. In `secrets.yaml` eintragen (IP ersetzen):
+1. [home-assistant/reef_bridge.yaml](home-assistant/reef_bridge.yaml) nach `/config/packages/reef_bridge.yaml` kopieren.
+2. Unter dem bestehenden `homeassistant:`-Abschnitt in `configuration.yaml` `packages: !include_dir_named packages` aktivieren.
+3. `secrets.yaml` ergänzen:
 
 ```yaml
 reef_bridge_status_url: http://192.168.178.50/api/status
 reef_bridge_control_url: http://192.168.178.50/api/control
 ```
 
-4. HA-Konfiguration prüfen, neu starten. Modussensor und Helfer erscheinen. Das Attribut `update` des Modussensors enthält den automatischen Update-Status. Bei acht Kanälen die HA-Spektrum-Liste auf acht Zahlen erweitern.
-5. „Reef Bridge durch HA steuern“ einschalten: HA erneuert alle 30 Sekunden den Spektrum-Befehl mit 90 Sekunden Gültigkeit. Ausschalten kehrt sofort zum Bridge-Tagesprofil zurück. Ein HA-Ausfall führt nach maximal 90 Sekunden plus HTTP-Laufzeit zum lokalen Programm zurück.
+4. HA-Konfiguration prüfen und neu starten. „Reef Bridge durch HA steuern“ sendet alle 30 Sekunden eine Lease für 90 Sekunden. Bei acht Kanälen die Helferliste auf acht Zahlen erweitern. Ausschalten kehrt zum lokalen Tagesplan zurück. Bei HA-Ausfall endet die Lease nach 90 Sekunden; HTTP-Laufzeit kann den Lichtwechsel verzögern.
 
-Ein dauerhaft manuell aktivierter Bridge-Modus lehnt HA-Leases mit HTTP 409 ab; zuerst „Tagesprofil fortsetzen“ drücken. Ein HA-Tagesprogramm kann später die Helferwerte zeitgesteuert verändern. Das Bridge-Tagesprofil ist das lokal hinterlegte Fallback-Profil, es wird nicht automatisch aus der alten HA-Integration importiert.
+Der dauerhafte manuelle Modus lehnt HA-Leases mit HTTP 409 ab. Update-Status steht im Attribut `update` des Modussensors. Keine Cloudanmeldung, kein MQTT nötig. REST ist tokenfrei und ausschließlich für ein vertrauenswürdiges lokales Netz vorgesehen, ohne Internet-Portfreigabe.
 
 ## Lokale API
 
-Alle `/api/*`-Aufrufe sind ohne Token erreichbar. HTTP daher ausschließlich im vertrauenswürdigen Heimnetz verwenden und niemals per Portfreigabe ins Internet stellen. Es gibt kein MQTT und keine Cloudanmeldung.
-
 | Methode / Pfad | Funktion |
 | --- | --- |
-| GET `/api/status` | Version, Modus, Restzeit, Temperatur, Update-Status, zuletzt gesendete Pegel, Konfiguration, Log |
-| POST `/api/wifi` | `{ "ssid": "WLAN", "password": "…" }` |
-| POST `/api/config` | Vollständige Konfiguration mit IP, serial, channels, timezone, points und scenes |
-| POST `/api/control` | `{ "action": "preview", "seconds": 300, "levels": [10,40,0,0,70,5] }` |
+| GET `/api/status` | `workspace` mit Lampen/Bibliothek/Gruppen; `lights` mit Laufzeitstatus; Firmware, Update und kompatibler REST-Status der ersten Lampe |
+| POST `/api/studio` | Gleiche Aktionen wie Reef Studio: `save`, `delete`, `activate`, `manual`, `preview`, `preview_cancel`, `resume`, `release`, `group_save`, `group_delete` |
+| POST `/api/fixture` | `index` (-1 für neu), `name`, `lamp_ip`, `serial`, `channels`, `timezone` |
+| POST `/api/restore` | Vollständiges `workspace`-Backup importieren; alle Overrides beenden |
+| POST `/api/wifi` | `ssid`, `password` |
+| POST `/api/control` | Kompatible erste-Lampe-Aktionen `lease`, `preview`, `manual`, `resume` mit `levels` und `seconds` |
 
-Weitere Aktionen: `manual` ohne Ablauf, `lease` mit 1–90 Sekunden und `resume`. Vorschau 1–3600 Sekunden. Manuell/Vorschau/Lease sind eine einzelne Override-Ebene: ein neuer Befehl ersetzt sie. Rückkehr nach Ende immer zum Bridge-Tagesprofil. Die Laufzeit beginnt mit Annahme auf dem ESP32; HTTP-Kommunikation zur Lampe braucht zusätzliche Zeit.
+Studio-Beispiel: `{"action":"activate","serial":"SERIENNUMMER","kind":"programs","item_id":"PROFIL_ID"}`. Gruppen verwenden `serial: "group:GRUPPEN_ID"`. Vorschauen erhalten `preview_seconds` (1–3600); Szenen `duration` (1–60 Minuten). Das frühere `/api/config` wird durch `/api/fixture`, `/api/studio` und `/api/restore` ersetzt. Alte Backups können bei der Migration aus der bestehenden 0.1-Installation übernommen werden; der neue Import erwartet das vollständige Workspace-Format.
 
-## Entwickeln und Prüfen
+## Entwicklung und gemeinsame Releases
 
 ```sh
-python3 -m pip install platformio==6.1.18
-cd reef-bridge
-pio run
-pio run --target upload --upload-port /dev/cu.usbserial-0001
-pio device monitor --baud 115200
+python3 tools/validate_release.py
+python3 tools/validate_studio_sync.py
+pio run -d reef-bridge
+node tools/preview_studio.cjs
+node reef-bridge/tools/preview.cjs
 ```
 
-Die Weboberfläche wird beim Build eingebettet. GitHub Actions baut die Firmware, erzeugt ein Factory-Abbild und veröffentlicht den Web-Installer samt öffentlicher Versionsdatei mit GitHub Pages. Versionen für die Bridge werden unabhängig von der HA-Integration gepflegt.
+Die Vorschauen benötigen Playwright/Chromium und verwenden ausschließlich simulierte API-Antworten. Bei Bedarf `PLAYWRIGHT_MODULE` auf die lokale Playwright-Installation setzen. Die Bridge-Vorschau schreibt Bilder nach `/tmp/reef-bridge-studio` (überschreibbar mit `BRIDGE_SCREENSHOT_DIR`).
 
-Vor regulärem Betrieb testen: Seriennummer-Sperre, sechs/acht Kanäle, Tageswechsel, NTP nach Neustart, Abbruch einer Vorschau, Fallback beim Stoppen von HA, WLAN-Ausfall und mindestens 24 Stunden Dauerbetrieb. Der aktuelle Code wurde noch nicht an einem angeschlossenen ESP32/Lampen-Paar abgenommen. Keine automatischen Schreibtests an einem realen Aquarium.
+Bei gemeinsamen Änderungen HA-Version, Panel-Cache, Bridge-Firmware-Version, Installer und `studio_version` im Update-Manifest gemeinsam pflegen, siehe [AGENTS.md](../AGENTS.md). GitHub Actions validiert, baut die Firmware und veröffentlicht Installer/Update-Manifest auf Pages. [Bridge-Changelog](CHANGELOG.md).
 
-Lizenz: MIT, siehe [LICENSE](../LICENSE). Unabhängiges Community-Projekt ohne Herstellerzugehörigkeit.
+Vor regulärem Aquarienbetrieb am echten ESP32 testen: Migration und Stromausfall beim Speichern, Neustart, 6/8-Kanal-Mischgruppen, Timer, manuell, NTP/Zeitzonen, Seriennummer-Sperre, WLAN-/HA-Ausfall und mindestens 24 Stunden Dauerbetrieb. Keine automatisierten Schreibtests am realen Aquarium.
+
+MIT, siehe [LICENSE](../LICENSE). Unabhängiges Community-Projekt ohne Herstellerzugehörigkeit.
