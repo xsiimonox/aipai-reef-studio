@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.18.2";
+const REEF_STUDIO_VERSION = "0.18.3";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -425,6 +425,11 @@ class ReefStudioPanel extends HTMLElement {
     const node = this.$.querySelector("#draft");
     const point = programs ? item.points[this.point] : null;
     const levels = point?.levels ?? item.levels;
+    const masterKey = programs ? `point:${this.point}` : "scene";
+    if (this.masterKey !== masterKey) {
+      this.masterKey = masterKey;
+      this.masterBase = [...levels];
+    }
     node.innerHTML = `<div class="edit-grid"><div>
       <label class="field">Name<input id="name" maxlength="64" required value="${escape(item.name)}"></label>
       ${programs ? `<details class="actions"><summary>Rampen-Assistent</summary>
@@ -443,6 +448,8 @@ class ReefStudioPanel extends HTMLElement {
           <button id="add" ${item.points.length >= 48 ? "disabled" : ""}>+ Punkt</button>
           <button id="remove" ${item.points.length <= 2 ? "disabled" : ""}>Punkt entfernen</button></div>` : ""}
       </div><div><h2>${programs ? "Spektrum am Stützpunkt" : "Spektrum der Szene"}</h2>
+        ${programs ? `<label class="slider" style="--c:#83eee2"><span>Gesamtintensität</span><input id="master-level" type="range" min="0" max="100" value="100" aria-label="Gesamtintensität">
+          <input id="master-value" type="number" min="0" max="100" step="1" value="100" aria-label="Gesamtintensität Prozent"></label><small>Skaliert alle Kanäle proportional zum aktuellen Spektrum.</small>` : ""}
         <div class="sliders">${this.light.labels.map((label, i) => `<label class="slider" style="--c:${COLORS[i]}">
           <span>${escape(label)}</span><input type="range" min="0" max="100" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)}">
           <input type="number" min="0" max="100" step="1" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)} Prozent"></label>`).join("")}</div>
@@ -457,11 +464,31 @@ class ReefStudioPanel extends HTMLElement {
         node.querySelectorAll(`[data-level="${input.dataset.level}"]`).forEach(peer => {
           if (peer !== input) peer.value = input.value;
         });
+        // Subsequent master adjustments use this newly fine-tuned mix as their
+        // neutral 100 % reference.
+        this.masterBase = [...levels];
+        const masterLevel = node.querySelector("#master-level");
+        const masterValue = node.querySelector("#master-value");
+        if (masterLevel) masterLevel.value = 100;
+        if (masterValue) masterValue.value = 100;
         this.queueLivePreview(levels);
         this.update();
       };
       input.onchange = () => { input.value = levels[input.dataset.level]; };
     });
+    const masterLevel = node.querySelector("#master-level");
+    const masterValue = node.querySelector("#master-value");
+    const applyMaster = value => {
+      if (!Number.isInteger(value) || value < 0 || value > 100) return;
+      levels.splice(0, levels.length, ...this.masterBase.map(level => Math.round(level * value / 100)));
+      node.querySelectorAll("[data-level]").forEach(input => { input.value = levels[input.dataset.level]; });
+      if (masterLevel) masterLevel.value = value;
+      if (masterValue) masterValue.value = value;
+      this.queueLivePreview(levels);
+      this.update();
+    };
+    if (masterLevel) masterLevel.oninput = () => applyMaster(Number(masterLevel.value));
+    if (masterValue) masterValue.oninput = () => applyMaster(Number(masterValue.value));
     node.querySelector("#save").onclick = () => {
       if (!node.querySelector("#name").reportValidity()) return;
       this.send("save", { ...(this.itemId ? { item_id: this.itemId } : {}), item });

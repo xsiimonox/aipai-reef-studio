@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.3] - 2026-11-07
+
+### Added
+
+- Tagesprogramme haben pro Stützpunkt einen Gesamtintensitäts-Regler. Er skaliert alle Kanäle proportional und erhält damit das eingestellte Spektralverhältnis.
+
 ## [0.18.2] - 2026-11-07
 
 ### Fixed
