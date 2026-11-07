@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.1] - 2026-11-07
+
+### Added
+
+- Prominente Statuskarte „Aktiver Lichtmodus“: Sie zeigt jederzeit Live-Vorschau, aktive Szene, Tagesprogramm, dauerhaften manuellen Modus, Wiederherstellung oder den lampeneigenen Modus an.
+
 ## [0.18.0] - 2026-11-07
 
 ### Added

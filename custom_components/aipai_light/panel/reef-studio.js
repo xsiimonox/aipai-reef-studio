@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.17.4";
+const REEF_STUDIO_VERSION = "0.18.1";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -38,6 +38,7 @@ const STYLE = `
   select{max-width:100%} .pill{border-radius:30px;padding:4px 10px;background:#203955;color:#b9e3ff;font-size:.82rem}
   .notice{color:#ffd2a0;margin:8px 0;min-height:1.35em}.notice:empty{margin:0;min-height:0}
   .update-note{margin:0 0 15px;padding:11px 14px;border:1px solid #76e8e0;border-radius:12px;background:#123d47;color:#dcfffb}
+  .mode-note{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 15px;padding:12px 15px;border:1px solid #3e6682;border-radius:14px;background:#102c43}.mode-note span{color:#a5b7cb;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}.mode-note strong{color:#a5fff2;text-align:right}
   .legend{font-size:.78rem;margin-top:5px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:5px}
   svg{width:100%;display:block;overflow:visible}.timeline{margin-top:6px}
   .scrub{display:flex;align-items:center;gap:10px;margin-top:4px}.scrub input{width:100%}
@@ -91,6 +92,18 @@ class ReefStudioPanel extends HTMLElement {
 
   get light() { return this.lights.find(light => light.serial === this.serial); }
   get $() { return this.shadowRoot; }
+
+  activeMode(light) {
+    if (light.preview) return "Live-Vorschau";
+    if (light.scene) {
+      const scene = light.scenes[light.scene.id];
+      return light.scene.manual ? `Manueller Modus · ${scene?.name ?? "Szene"}` :
+        `Szene aktiv · ${scene?.name ?? "Unbekannte Szene"}`;
+    }
+    if (light.program) return `Tagesprogramm aktiv · ${light.programs[light.program]?.name ?? "Unbekannt"}`;
+    if (light.restoring) return "Vorherigen Lampenzustand wiederherstellen";
+    return "Lampeneigener Modus";
+  }
 
   queueLivePreview(levels) {
     const light = this.light;
@@ -209,6 +222,7 @@ class ReefStudioPanel extends HTMLElement {
 
   render() {
     const light = this.light;
+    const mode = light ? this.activeMode(light) : "";
     this.$.innerHTML = `<style>${STYLE}</style><main><div class="shell">
       <header class="head"><div><div class="row"><ha-menu-button></ha-menu-button><div class="eyebrow">AIPAI / Aquarienbeleuchtung</div></div>
       <h1>Reef Studio</h1><p class="muted">Tageslicht planen. Spektrum abstimmen. <span class="pill">v${REEF_STUDIO_VERSION}</span></p></div>
@@ -216,6 +230,7 @@ class ReefStudioPanel extends HTMLElement {
         `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}</option>`).join("")}</select>` : ""}
       </header><div id="notice" class="notice" role="status"></div>
       ${this.updateInfo?.available ? `<div class="update-note" role="status">Update verfügbar: <strong>v${escape(this.updateInfo.latest)}</strong> (installiert: v${escape(this.updateInfo.current)}). Bitte über HACS aktualisieren.</div>` : ""}
+      ${light ? `<section class="mode-note" aria-live="polite"><span>Aktiver Lichtmodus</span><strong>${escape(mode)}</strong></section>` : ""}
       ${light ? `<div class="grid"><section class="panel">
         <div class="row spread"><h2 id="curve-title">Tagesverlauf</h2><span id="now" class="pill"></span></div>
         <div id="chart" class="timeline"></div>
