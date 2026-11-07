@@ -24,8 +24,10 @@ class ReefGroups:
         name = name.strip()
         if not 1 <= len(name) <= 64:
             raise ValueError("Bitte einen Gruppennamen mit 1 bis 64 Zeichen eingeben.")
-        if len(serials) < 2 or len(set(serials)) != len(serials):
-            raise ValueError("Eine Gruppe braucht mindestens zwei unterschiedliche Lampen.")
+        if not serials:
+            raise ValueError("Bitte mindestens eine Lampe für die Gruppe auswählen.")
+        if len(set(serials)) != len(serials):
+            raise ValueError("Eine Lampe kann nur einmal in derselben Gruppe enthalten sein.")
         hubs = self.hass.data.get(DOMAIN, {})
         if any(serial not in {hub.serial for hub in hubs.values()} for serial in serials):
             raise ValueError("Eine ausgewählte Lampe ist nicht mehr verfügbar.")

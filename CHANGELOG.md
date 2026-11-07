@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.20.3] - 2026-11-07
+
+### Fixed
+
+- Lampengruppen dürfen jetzt auch genau eine Lampe enthalten. Leere Gruppen und doppelt ausgewählte Lampen werden weiterhin verhindert.
+
 ## [0.20.2] - 2026-11-07
 
 ### Fixed
