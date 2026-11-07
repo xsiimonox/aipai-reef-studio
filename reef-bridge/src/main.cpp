@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
@@ -11,9 +12,10 @@
 
 // First hardware target: classic ESP32 WROOM / DevKit, 4 MB flash.
 WebServer server(80);
+DNSServer dnsServer;
 Preferences prefs;
 DynamicJsonDocument config(16384);
-String token, apPassword, events[80], lastError;
+String apPassword, events[80], lastError;
 unsigned eventCount = 0;
 uint32_t lastOutput = 0, overrideEnd = 0, lastReconnect = 0, lastUpdateCheck = 0;
 String mode = "schedule";
@@ -30,11 +32,6 @@ void logEvent(String text) {
   time_t now = time(nullptr);
   events[eventCount++ % 80] = String((long)now) + " | " + text;
   Serial.println(text);
-}
-String randomSecret() {
-  char buf[33];
-  for (int i = 0; i < 4; ++i) snprintf(buf + i * 8, 9, "%08lx", (unsigned long)esp_random());
-  return String(buf);
 }
 int channels() { return config["channels"] | 6; }
 int compareVersion(const String& a, const String& b) {
@@ -74,10 +71,6 @@ void saveConfig() {
 void applyClock() {
   String zone = config["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3";
   configTzTime(zone.c_str(), "pool.ntp.org", "time.cloudflare.com");
-}
-bool auth() {
-  if (server.header("Authorization") == "Bearer " + token) return true;
-  server.send(401, "application/json", "{\"error\":\"API token required\"}"); return false;
 }
 void fail(String text, int status = 400) {
   DynamicJsonDocument doc(512); doc["error"] = text;
@@ -214,22 +207,22 @@ void output() {
 }
 void setup() {
   Serial.begin(115200); prefs.begin("reefbridge", false);
-  token = prefs.getString("token", "");
-  if (token.isEmpty()) { token = randomSecret(); prefs.putString("token", token); }
   apPassword = prefs.getString("ap_pass", "");
   if (apPassword.isEmpty()) { apPassword = defaultApPassword; prefs.putString("ap_pass", apPassword); }
   deserializeJson(config, prefs.getString("config", "{}"));
   WiFi.mode(WIFI_AP_STA);
   String ssid = "ReefBridge-" + String((uint32_t)ESP.getEfuseMac(), HEX);
   WiFi.softAP(ssid.c_str(), apPassword.c_str());
+  dnsServer.start(53, "*", WiFi.softAPIP());
   WiFi.begin(prefs.getString("ssid", "").c_str(), prefs.getString("wifi_pass", "").c_str());
-  Serial.println("Setup SSID: " + ssid + "\nSetup password: " + apPassword + "\nAPI token: " + token);
-  Serial.println("Setup: http://192.168.4.1  |  Serial commands: INFO");
+  Serial.println("Setup SSID: " + ssid + "\nSetup password: " + apPassword);
+  Serial.println("Setup: captive portal / http://192.168.4.1  |  Serial commands: INFO");
   applyClock();
-  const char* headers[] = {"Authorization"}; server.collectHeaders(headers, 1);
   server.on("/", HTTP_GET, [] { server.send_P(200, "text/html; charset=utf-8", (const char*)WEB_UI, sizeof(WEB_UI)); });
+  server.on("/generate_204", HTTP_GET, [] { server.sendHeader("Location", "http://192.168.4.1/", true); server.send(302, "text/plain", ""); });
+  server.on("/hotspot-detect.html", HTTP_GET, [] { server.send_P(200, "text/html; charset=utf-8", (const char*)WEB_UI, sizeof(WEB_UI)); });
+  server.on("/connecttest.txt", HTTP_GET, [] { server.sendHeader("Location", "http://192.168.4.1/", true); server.send(302, "text/plain", ""); });
   server.on("/api/status", HTTP_GET, [] {
-    if (!auth()) return;
     DynamicJsonDocument doc(16384);
     doc["version"] = BRIDGE_VERSION; doc["mode"] = mode; doc["lamp_online"] = lampOnline;
     doc["clock_valid"] = time(nullptr) >= 1700000000; doc["ip"] = WiFi.localIP().toString();
@@ -245,20 +238,20 @@ void setup() {
     String json; serializeJson(doc, json); server.send(200, "application/json", json);
   });
   server.on("/api/wifi", HTTP_POST, [] {
-    if (!auth()) return; DynamicJsonDocument doc(1024); if (!readBody(doc)) return;
+    DynamicJsonDocument doc(1024); if (!readBody(doc)) return;
     String ssid = doc["ssid"] | "", pass = doc["password"] | "";
     if (ssid.isEmpty() || ssid.length()>32 || pass.length()>63) { fail("Invalid WiFi credentials"); return; }
     prefs.putString("ssid", ssid); prefs.putString("wifi_pass", pass);
     server.send(200, "application/json", "{\"ok\":true}"); WiFi.begin(ssid.c_str(), pass.c_str());
   });
   server.on("/api/config", HTTP_POST, [] {
-    if (!auth()) return; DynamicJsonDocument doc(16384); if (!readBody(doc)) return;
+    DynamicJsonDocument doc(16384); if (!readBody(doc)) return;
     if (!validConfig(doc)) { fail("Invalid configuration: sorted points, IP, serial and channel levels required"); return; }
     config.set(doc); saveConfig(); applyClock(); forceOutput = true; logEvent("Configuration saved");
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/control", HTTP_POST, [] {
-    if (!auth()) return; DynamicJsonDocument doc(2048); if (!readBody(doc)) return;
+    DynamicJsonDocument doc(2048); if (!readBody(doc)) return;
     if (config["serial"].isNull()) { fail("Configure a lamp first",409); return; }
     String action = doc["action"] | "";
     if (action == "resume") { mode="schedule"; overrideEnd=0; }
@@ -273,18 +266,28 @@ void setup() {
     }
     forceOutput=true; logEvent("Control: " + mode); server.send(200,"application/json","{\"ok\":true}");
   });
-  server.onNotFound([] { fail("Not found",404); }); server.begin();
+  server.onNotFound([] {
+    // The AP DNS points all captive-portal probes here. Redirect them to the
+    // local dashboard so iOS, Android, macOS and Windows can open it directly.
+    if (WiFi.softAPgetStationNum()) {
+      server.sendHeader("Location", "http://192.168.4.1/", true);
+      server.send(302, "text/plain", "");
+      return;
+    }
+    fail("Not found",404);
+  }); server.begin();
   logEvent("Bridge booted: local schedule; temporary overrides cleared");
 }
 void loop() {
+  dnsServer.processNextRequest();
   server.handleClient();
   if (Serial.available()) { String command=Serial.readStringUntil('\n'); command.trim();
-    if(command=="INFO") Serial.println("AP password: "+apPassword+"\nAPI token: "+token+"\nIP: "+WiFi.localIP().toString());
+    if(command=="INFO") Serial.println("AP password: "+apPassword+"\nIP: "+WiFi.localIP().toString());
   }
   if (WiFi.status()==WL_CONNECTED) {
     static bool mdns=false; if(!mdns) mdns=MDNS.begin("reefbridge");
     // Setup AP shuts down after the first successful station connection.
-    static bool apStopped=false; if(!apStopped) { WiFi.softAPdisconnect(true); apStopped=true; }
+    static bool apStopped=false; if(!apStopped) { dnsServer.stop(); WiFi.softAPdisconnect(true); apStopped=true; }
     if (!lastUpdateCheck || millis() - lastUpdateCheck >= 6UL * 60UL * 60UL * 1000UL) checkForUpdate();
   } else if(millis()-lastReconnect>30000) { lastReconnect=millis(); WiFi.reconnect(); }
   if (forceOutput || millis()-lastOutput>=30000 || (overrideEnd && expired(overrideEnd))) {

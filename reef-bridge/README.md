@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant erforderlich. Optional kann Home Assistant über die lokale Bridge-API steuern. Dies ist **Version 0.1.1, ein experimenteller Prototyp**. Kompilieren und simulierte Prüfungen ersetzen keinen Dauertest am echten ESP32 und der Lampe.
+Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant erforderlich. Optional kann Home Assistant über die lokale Bridge-API steuern. Dies ist **Version 0.1.2, ein experimenteller Prototyp**. Kompilieren und simulierte Prüfungen ersetzen keinen Dauertest am echten ESP32 und der Lampe.
 
 ![Architektur und Fallback](docs/architecture.svg)
 
@@ -19,7 +19,8 @@ Eigenständige lokale Steuerung für AIPAI-LED-Lampen – ohne Home Assistant er
 - Bis zu 16 gespeicherte Szenen, Regler-Vorschau, zeitbegrenzte Anzeige für 1–60 Minuten, dauerhafter manueller Modus und sofortige Rückkehr zum Tagesprofil.
 - Gerätename/IP, Kanalprofil, Seriennummer-Prüfung, POSIX-Zeitzone mit Sommerzeit, NTP, Temperatur und Diagnoseprotokoll.
 - Programme und WLAN bleiben im Flash; nach Neustart läuft das Tagesprogramm weiter, sobald eine gültige Uhrzeit vorliegt. Temporäre/manuelle Overrides werden beim Neustart aufgehoben.
-- Weboberfläche liegt vollständig in der Firmware; Backup/Import als JSON.
+- Weboberfläche liegt vollständig in der Firmware; Backup/Import als JSON, ohne API-Token.
+- Das ReefBridge-WLAN stellt ein Captive Portal bereit: Nach dem Verbinden öffnet das Betriebssystem die Oberfläche normalerweise direkt. Falls es nicht automatisch erscheint, funktioniert immer `http://192.168.4.1`.
 - Automatische Update-Suche: Nach erfolgreicher WLAN-Verbindung und anschließend alle sechs Stunden prüft die Bridge die veröffentlichte Bridge-Firmware. Ein Hinweis mit Link zum Browser-Installer erscheint im Dashboard; ein Flash-Vorgang geschieht erst nach bewusster Bestätigung.
 - Home Assistant steuert über eine Lease: spätestens 90 Sekunden nach der letzten Bestätigung übernimmt das lokale Tagesprogramm.
 
@@ -38,9 +39,9 @@ Der [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) wird aus
 1. ESP32 per **Datenkabel** verbinden. Bei fehlendem USB-Port eventuell den passenden CP210x-/CH340-Treiber des Boardherstellers installieren.
 2. Im Browser-Installer „Connect“ / „Install“ wählen und den USB-Port auswählen. Nur das Abbild für klassischen ESP32 verwenden.
 3. Bei Verbindungsproblemen BOOT während des Verbindungsaufbaus halten, gegebenenfalls EN/RESET kurz drücken.
-4. Das Setup-WLAN verwendet bei einer **neuen Installation** das Standardpasswort **`ReefBridge2026!`**. Die Konsole mit 115200 Baud öffnen und `INFO` mit Enter senden, falls die Zugangsdaten geprüft werden sollen; sie zeigt außerdem den individuellen API-Token. Den Token lokal aufbewahren und nicht als Screenshot veröffentlichen.
-5. Mit `ReefBridge-…` und dem Passwort `ReefBridge2026!` verbinden. `http://192.168.4.1` öffnen und den API-Token eintragen.
-6. Heim-WLAN unter „WLAN einrichten“ speichern. Nach Verbindung schließt das Setup-WLAN. Bridge-IP im Router suchen oder `http://reefbridge.local` versuchen. Bei mehreren Bridges die IP verwenden.
+4. Das Setup-WLAN verwendet bei einer **neuen Installation** das Standardpasswort **`ReefBridge2026!`**. Die Konsole mit 115200 Baud öffnen und `INFO` mit Enter senden, falls das Passwort geprüft werden soll.
+5. Mit `ReefBridge-…` und dem Passwort `ReefBridge2026!` verbinden. Das Captive Portal öffnet die Oberfläche normalerweise von selbst. Andernfalls im Browser `http://192.168.4.1` aufrufen. Ein API-Token ist nicht erforderlich.
+6. Heim-WLAN unter „WLAN einrichten“ speichern. Nach Verbindung schließt das Setup-WLAN. Die Bridge-IP im Router öffnen; bei mehreren Bridges immer die jeweilige IP verwenden.
 7. Lampen-IP und **korrekte Seriennummer** eintragen. Kanalprofil wählen, Tagespunkte festlegen und speichern. Der Controller prüft vor jedem Schreibzyklus die Seriennummer.
 
 Das Setup-WLAN ist nach Neustart zunächst verfügbar und endet bei erfolgreicher WLAN-Verbindung. Bei falschen WLAN-Daten bleibt es erreichbar; so lässt sich die Konfiguration korrigieren. Das Standardpasswort gilt nur, solange noch kein Passwort im Flash gespeichert ist: Bereits eingerichtete Bridges behalten ihr bisheriges Passwort. Die USB-Konsole liefert Zugangsdaten bei Bedarf erneut über `INFO`.
@@ -88,12 +89,11 @@ homeassistant:
   packages: !include_dir_named packages
 ```
 
-3. In `secrets.yaml` eintragen (IP und Token ersetzen):
+3. In `secrets.yaml` eintragen (IP ersetzen):
 
 ```yaml
 reef_bridge_status_url: http://192.168.178.50/api/status
 reef_bridge_control_url: http://192.168.178.50/api/control
-reef_bridge_authorization: 'Bearer HIER_DEN_API_TOKEN_EINTRAGEN'
 ```
 
 4. HA-Konfiguration prüfen, neu starten. Modussensor und Helfer erscheinen. Das Attribut `update` des Modussensors enthält den automatischen Update-Status. Bei acht Kanälen die HA-Spektrum-Liste auf acht Zahlen erweitern.
@@ -103,7 +103,7 @@ Ein dauerhaft manuell aktivierter Bridge-Modus lehnt HA-Leases mit HTTP 409 ab; 
 
 ## Lokale API
 
-Alle `/api/*`-Aufrufe brauchen `Authorization: Bearer TOKEN`. HTTP nur im vertrauenswürdigen Heimnetz verwenden, keine Portfreigabe. Es gibt kein MQTT und keine Cloudanmeldung.
+Alle `/api/*`-Aufrufe sind ohne Token erreichbar. HTTP daher ausschließlich im vertrauenswürdigen Heimnetz verwenden und niemals per Portfreigabe ins Internet stellen. Es gibt kein MQTT und keine Cloudanmeldung.
 
 | Methode / Pfad | Funktion |
 | --- | --- |
