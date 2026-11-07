@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.2.1** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
+Firmware **0.2.2** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
 
 ![Reef Studio auf der Bridge](docs/bridge-desktop.png)
 
@@ -14,7 +14,7 @@ Firmware **0.2.1** mit demselben Reef-Studio-Editor wie Home Assistant. Tagespro
 
 ## Gemeinsame Bedienung
 
-- Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und proportionaler Gesamtintensitätsregler.
+- Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, duplizierbare Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und ein proportionaler Gesamtintensitätsregler für das vollständige Tagesprofil.
 - Gemeinsame lokale Programm- und Szenenbibliothek für alle Lampen dieser Bridge. Neue Einträge, Bearbeiten, Duplizieren, Löschen und Aktivieren. Bis 32 Programme und 32 Szenen, insgesamt maximal 48 KB JSON bzw. die verfügbare Parser-Kapazität; größere Änderungen werden mit Fehlermeldung abgelehnt.
 - Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
 - Programme laufen lokal, ohne offenen Browser oder Home Assistant. Jede Lampe hat einen eigenen aktiven Eintrag und eigene Timer. Ein Profilwechsel einer Lampe ändert nicht automatisch die Auswahl einer anderen Lampe.

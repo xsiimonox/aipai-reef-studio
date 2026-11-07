@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.21.3] - 2026-11-07
+
+### Added
+
+- Zeitpunkte eines Tagesprogramms lassen sich duplizieren. Die Kopie übernimmt sämtliche Kanalverhältnisse und wird auf die nächste freie Minute gelegt, damit anschließend nur die Zielzeit angepasst werden muss.
+
+### Changed
+
+- Die Gesamtintensität skaliert jetzt proportional alle Kanäle an allen Zeitpunkten des vollständigen Tagesprogramms. Der eingestellte Faktor bleibt beim Wechsel zwischen Stützpunkten erhalten. Gilt für HA und Reef Bridge 0.2.2.
+
 ## [0.21.2] - 2026-11-07
 
 ### Fixed

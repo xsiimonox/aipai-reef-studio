@@ -40,6 +40,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('#library').waitFor();await ui.locator('#library').selectOption('day');
   assert.equal(await ui.locator('[data-level][type=range]').count(),6);
   await ui.locator('[data-point="2"]').click();
+  const originalPoints=await ui.evaluate(el=>structuredClone(el.draft.points));
+  await ui.locator('#master-value').fill('50');
+  const scaledPoints=await ui.evaluate(el=>structuredClone(el.draft.points));
+  assert.deepEqual(scaledPoints.map(point=>point.levels),originalPoints.map(point=>point.levels.map(level=>Math.round(level*.5))),'master intensity must scale all points');
+  await ui.locator('[data-point="1"]').click();assert.equal(await ui.locator('#master-value').inputValue(),'50');await ui.locator('[data-point="2"]').click();
+  const pointBeforeCopy=await ui.evaluate(el=>structuredClone(el.draft.points[el.point]));await ui.locator('#duplicate-point').click();
+  const copyResult=await ui.evaluate(el=>({count:el.draft.points.length,point:structuredClone(el.draft.points[el.point])}));
+  assert.equal(copyResult.count,originalPoints.length+1);assert.deepEqual(copyResult.point.levels,pointBeforeCopy.levels);assert.notEqual(copyResult.point.minute,pointBeforeCopy.minute);
   await ui.locator('[data-level="1"][type=number]').fill('55');
   await page.waitForTimeout(350);
   assert(calls.some(c=>c.body.action==='preview'&&c.body.preview_seconds===60&&c.body.levels.length===6));
@@ -68,6 +76,6 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   assert(calls.some(c=>c.body.action==='save'&&c.body.serial==='group:group1'&&c.body.item.points?.[0].levels[6]===65));
   // Native countdown continues between network polls.
   const before=await ui.evaluate(el=>{el.testDeadline=Date.now()/1000+60;return el.secondsUntil(el.testDeadline,el.light);});await page.waitForTimeout(1100);const after=await ui.evaluate(el=>el.secondsUntil(el.testDeadline,el.light));assert(after<before,'Countdown must tick between polls');
-  assert.deepEqual(errors,[]);console.log('PASS: onboarding, 6/8 channels, shared library save, preview duration, mixed group manual/scene/resume, responsive 320–1440px; no JS errors. '+screenshotDir);
+  assert.deepEqual(errors,[]);console.log('PASS: global intensity, point copy, onboarding, 6/8 channels, shared library, mixed groups, responsive 320–1440px; no JS errors. '+screenshotDir);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

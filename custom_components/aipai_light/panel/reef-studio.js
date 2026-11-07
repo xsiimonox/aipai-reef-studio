@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.21.2";
+const REEF_STUDIO_VERSION = "0.21.3";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -231,6 +231,9 @@ class ReefStudioPanel extends HTMLElement {
     this.draft = null;
     this.point = 0;
     this.preview = null;
+    this.masterItem = null;
+    this.masterBase = null;
+    this.masterValue = 100;
   }
 
   status(message) {
@@ -526,11 +529,14 @@ class ReefStudioPanel extends HTMLElement {
     const node = this.$.querySelector("#draft");
     const point = programs ? item.points[this.point] : null;
     const levels = point?.levels ?? item.levels;
-    const masterKey = programs ? `point:${this.point}` : "scene";
-    if (this.masterKey !== masterKey) {
-      this.masterKey = masterKey;
-      this.masterBase = [...levels];
-    }
+    const resetMasterBase = () => {
+      this.masterItem = item;
+      this.masterBase = programs ? item.points.map(entry => [...entry.levels]) : [...levels];
+      this.masterValue = 100;
+    };
+    // A day program has one global intensity reference. Switching between
+    // points must not turn the control back into a point-only adjustment.
+    if (this.masterItem !== item || !this.masterBase) resetMasterBase();
     node.innerHTML = `<div class="edit-grid"><div>
       <label class="field">${programs ? "Programmname" : "Szenenname"}<input id="name" maxlength="64" required placeholder="${programs ? "z. B. Riff · Tageslicht" : "z. B. Blaulicht"}" value="${escape(item.name)}"></label>
       <small>Änderungen an diesem Eintrag gelten für die gemeinsame Bibliothek aller Lampen.</small>
@@ -546,11 +552,12 @@ class ReefStudioPanel extends HTMLElement {
           `<button data-point="${index}" aria-pressed="${this.point === index}">${clock(p.minute)}</button>`).join("")}</div>
         <div class="row"><label class="field">Zeit des Punkts<input id="point-time" type="time" value="${clock(point.minute)}"></label>
           <button id="add" ${item.points.length >= 48 ? "disabled" : ""}>+ Punkt</button>
+          <button id="duplicate-point" ${item.points.length >= 48 ? "disabled" : ""}>Punkt duplizieren</button>
           <button id="remove" ${item.points.length <= 2 ? "disabled" : ""}>Punkt entfernen</button></div>` : ""}
       </div><div><h2>${programs ? `Spektrum · ${clock(point.minute)}` : "Spektrum der Szene"}</h2>
         <small>Alle Kanalwerte in Prozent. ${this.light.group ? "Zum Prüfen ein Programm über die Uhrzeit-Vorschau ansehen oder eine gespeicherte Szene starten." : `Regler starten eine Live-Vorschau an der Lampe für ${programs ? "1 Minute" : "5 Minuten"}.`}</small>
-        ${programs ? `<label class="slider" style="--c:#83eee2"><span>Gesamt-<br>intensität</span><input id="master-level" type="range" min="0" max="100" value="100" aria-label="Gesamtintensität">
-          <input id="master-value" type="number" min="0" max="100" step="1" value="100" aria-label="Gesamtintensität Prozent"></label><small>Skaliert alle Kanäle proportional zum aktuellen Spektrum.</small>` : ""}
+        ${programs ? `<label class="slider" style="--c:#83eee2"><span>Gesamt-<br>intensität</span><input id="master-level" type="range" min="0" max="100" value="${this.masterValue}" aria-label="Gesamtintensität des gesamten Tagesprogramms">
+          <input id="master-value" type="number" min="0" max="100" step="1" value="${this.masterValue}" aria-label="Gesamtintensität des gesamten Tagesprogramms in Prozent"></label><small>Skaliert alle Kanäle an allen Zeitpunkten des gesamten Tagesprogramms proportional.</small>` : ""}
         <div class="sliders">${this.light.labels.map((label, i) => `<label class="slider" style="--c:${COLORS[i]}">
           <span>${escape(label)}</span><input type="range" min="0" max="100" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)}">
           <input type="number" min="0" max="100" step="1" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)} Prozent"></label>`).join("")}</div>
@@ -565,9 +572,10 @@ class ReefStudioPanel extends HTMLElement {
         node.querySelectorAll(`[data-level="${input.dataset.level}"]`).forEach(peer => {
           if (peer !== input) peer.value = input.value;
         });
-        // Subsequent master adjustments use this newly fine-tuned mix as their
-        // neutral 100 % reference.
-        this.masterBase = [...levels];
+        // A manual channel change becomes the new neutral 100 % reference for
+        // the complete profile, not only for the selected point.
+        this.masterBase = programs ? item.points.map(entry => [...entry.levels]) : [...levels];
+        this.masterValue = 100;
         const masterLevel = node.querySelector("#master-level");
         const masterValue = node.querySelector("#master-value");
         if (masterLevel) masterLevel.value = 100;
@@ -581,7 +589,11 @@ class ReefStudioPanel extends HTMLElement {
     const masterValue = node.querySelector("#master-value");
     const applyMaster = value => {
       if (!Number.isInteger(value) || value < 0 || value > 100) return;
-      levels.splice(0, levels.length, ...this.masterBase.map(level => Math.round(level * value / 100)));
+      item.points.forEach((entry, index) => {
+        entry.levels.splice(0, entry.levels.length,
+          ...this.masterBase[index].map(level => Math.round(level * value / 100)));
+      });
+      this.masterValue = value;
       node.querySelectorAll("[data-level]").forEach(input => { input.value = levels[input.dataset.level]; });
       if (masterLevel) masterLevel.value = value;
       if (masterValue) masterValue.value = value;
@@ -623,11 +635,23 @@ class ReefStudioPanel extends HTMLElement {
       const added = { minute, levels: interpolate(item.points, minute), curve: "linear" };
       item.points = sorted([...item.points, added]);
       this.point = item.points.indexOf(added);
+      resetMasterBase();
       showPoint();
+    };
+    node.querySelector("#duplicate-point").onclick = () => {
+      let minute = (point.minute + 1) % 1440;
+      while (item.points.some(entry => entry.minute === minute)) minute = (minute + 1) % 1440;
+      const duplicate = { ...point, minute, levels: [...point.levels], curve: "linear" };
+      item.points = sorted([...item.points, duplicate]);
+      this.point = item.points.indexOf(duplicate);
+      resetMasterBase();
+      showPoint();
+      this.status("Zeitpunkt dupliziert. Jetzt die gewünschte Uhrzeit auswählen.");
     };
     node.querySelector("#remove").onclick = () => {
       item.points.splice(this.point, 1);
       this.point = Math.min(this.point, item.points.length - 1);
+      resetMasterBase();
       showPoint();
     };
     node.querySelector("#ramp").onclick = () => {
@@ -648,6 +672,7 @@ class ReefStudioPanel extends HTMLElement {
         { minute: set + down, levels: [...zero], curve: "linear" },
       ];
       this.point = 1;
+      resetMasterBase();
       this.status("");
       showPoint();
     };

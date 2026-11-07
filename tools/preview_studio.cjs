@@ -26,6 +26,20 @@ const root = path.resolve(__dirname, '..');
     const panel = page.locator('aipai-reef-studio');
     await panel.locator('#library').selectOption('day');
     await panel.locator('[data-point="2"]').click();
+    const originalPoints = await panel.evaluate(el => structuredClone(el.draft.points));
+    await panel.locator('#master-value').fill('50');
+    const scaledPoints = await panel.evaluate(el => structuredClone(el.draft.points));
+    assert.deepEqual(scaledPoints.map(point => point.levels), originalPoints.map(point =>
+      point.levels.map(level => Math.round(level * 0.5))), 'Master intensity must scale every point');
+    await panel.locator('[data-point="1"]').click();
+    assert.equal(await panel.locator('#master-value').inputValue(), '50', 'Master intensity must survive point changes');
+    await panel.locator('[data-point="2"]').click();
+    const selectedBeforeDuplicate = await panel.evaluate(el => structuredClone(el.draft.points[el.point]));
+    await panel.locator('#duplicate-point').click();
+    const duplicateResult = await panel.evaluate(el => ({ count: el.draft.points.length, point: structuredClone(el.draft.points[el.point]) }));
+    assert.equal(duplicateResult.count, originalPoints.length + 1);
+    assert.deepEqual(duplicateResult.point.levels, selectedBeforeDuplicate.levels, 'Duplicated point must keep its spectrum');
+    assert.notEqual(duplicateResult.point.minute, selectedBeforeDuplicate.minute, 'Duplicated point needs a free time');
     const screenshotDir = process.env.STUDIO_SCREENSHOT_DIR || '/tmp/reef-studio-design';
     fs.mkdirSync(screenshotDir, { recursive: true });
     for (const width of [1440, 1024, 768, 390, 320]) {
@@ -56,6 +70,6 @@ const root = path.resolve(__dirname, '..');
     await page.setViewportSize({ width: 320, height: 900 });
     assert(await panel.locator('#save-group').evaluate(el => el.getBoundingClientRect().right <= innerWidth));
     assert.deepEqual(errors, []);
-    console.log('PASS: 320–1440px without overflow, program and scene editors, group creation, no JS errors. Screenshots: ' + screenshotDir);
+    console.log('PASS: global program intensity, point duplication, 320–1440px layout, editors, groups, no JS errors. Screenshots: ' + screenshotDir);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

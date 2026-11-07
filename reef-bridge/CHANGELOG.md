@@ -1,5 +1,10 @@
 # Reef Bridge Changelog
 
+## [0.2.2] - 2026-11-07
+
+- Gesamtintensität skaliert das komplette Tagesprogramm statt nur des ausgewählten Zeitpunkts.
+- Zeitpunkte können mitsamt allen Kanalwerten dupliziert und anschließend auf eine neue Uhrzeit gelegt werden. Gemeinsamer Editor mit HA 0.21.3.
+
 ## [0.2.1] - 2026-11-07
 
 - Gemischte Gruppen bieten alle acht Kanäle. UV und Warm White wirken nur auf MAX-Lampen; Sechskanal-Lampen erhalten ausschließlich ihre sechs Werte. Gemeinsamer Editor mit HA 0.21.2.
