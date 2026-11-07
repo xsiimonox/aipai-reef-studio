@@ -12,6 +12,8 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 ## Funktionen
 
+**Neu: [AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit eigener Weboberfläche, USB-/Browser-Installer für macOS und Windows sowie optionaler Home-Assistant-Anbindung mit lokalem Fallback.
+
 - Reef Studio als native Home-Assistant-Seitenleiste
 - Mehrere Tagesprogramme mit beliebig vielen Stützpunkten
 - Lineare oder weiche Sinusrampen für Sonnenauf- und -untergang

@@ -1,0 +1,53 @@
+name: Reef Bridge firmware and installer
+on:
+  push:
+    branches: [main]
+    paths: ['reef-bridge/**', '.github/workflows/bridge.yml']
+  pull_request:
+    paths: ['reef-bridge/**', '.github/workflows/bridge.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install platformio==6.1.18 esptool==4.8.1
+      - run: pio run -d reef-bridge
+      - name: Assemble factory firmware
+        run: |
+          python -m esptool --chip esp32 merge_bin -o reef-bridge/installer/firmware.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 reef-bridge/.pio/build/esp32dev/bootloader.bin 0x8000 reef-bridge/.pio/build/esp32dev/partitions.bin 0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin 0x10000 reef-bridge/.pio/build/esp32dev/firmware.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reef-bridge-esp32-factory
+          path: |
+            reef-bridge/installer/
+            reef-bridge/tools/flash.py
+      - name: Upload installer site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: reef-bridge/installer
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy browser installer
+        id: deployment
+        uses: actions/deploy-pages@v4

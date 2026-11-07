@@ -1,0 +1,72 @@
+# Copy into config/packages/reef_bridge.yaml; enable packages in configuration.yaml.
+# Secrets below are complete URLs, e.g. http://192.168.178.50/api/status.
+rest:
+  - resource: !secret reef_bridge_status_url
+    headers:
+      Authorization: !secret reef_bridge_authorization
+    scan_interval: 15
+    sensor:
+      - name: Reef Bridge Mode
+        unique_id: aipai_reef_bridge_mode
+        value_template: "{{ value_json.mode }}"
+        json_attributes:
+          - temperature
+          - remaining_seconds
+          - lamp_online
+          - clock_valid
+          - error
+          - version
+
+rest_command:
+  reef_bridge_control:
+    url: !secret reef_bridge_control_url
+    method: POST
+    headers:
+      Authorization: !secret reef_bridge_authorization
+    content_type: application/json
+    payload: '{"action": "{{ action }}", "seconds": {{ seconds | default(60) }}, "levels": {{ levels | default([0,0,0,0,0,0]) | to_json }}}'
+
+input_boolean:
+  reef_bridge_ha_control:
+    name: Reef Bridge durch HA steuern
+    initial: false
+
+input_text:
+  reef_bridge_ha_levels:
+    name: Reef Bridge HA Spektrum
+    initial: '[15,40,0,0,50,5]'
+    max: 100
+
+automation:
+  - id: reef_bridge_renew_ha_lease
+    alias: Reef Bridge – HA Steuerung bestätigen
+    triggers:
+      - trigger: time_pattern
+        seconds: '/30'
+      - trigger: state
+        entity_id:
+          - input_boolean.reef_bridge_ha_control
+          - input_text.reef_bridge_ha_levels
+    conditions:
+      - condition: state
+        entity_id: input_boolean.reef_bridge_ha_control
+        state: 'on'
+    actions:
+      - action: rest_command.reef_bridge_control
+        data:
+          action: lease
+          seconds: 90
+          levels: "{{ states('input_text.reef_bridge_ha_levels') | from_json }}"
+    mode: single
+  - id: reef_bridge_release_ha_lease
+    alias: Reef Bridge – Tagesprofil wieder aufnehmen
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.reef_bridge_ha_control
+        from: 'on'
+        to: 'off'
+    actions:
+      - action: rest_command.reef_bridge_control
+        data:
+          action: resume
+    mode: single
