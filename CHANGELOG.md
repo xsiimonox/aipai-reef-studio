@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.18.4] - 2026-11-07
+
+### Fixed
+
+- Reef Studio sendet bei jedem Minuten-Takt einen Keep-alive für aktive Tagesprogramme, Szenen, Live-Vorschauen und den dauerhaften manuellen Modus. Dadurch verwirft die Lampen-Firmware statische lokale Pegel nicht mehr nach einigen Minuten.
+
 ## [0.18.3] - 2026-11-07
 
 ### Added

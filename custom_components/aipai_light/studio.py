@@ -168,6 +168,11 @@ class ReefStudio:
             return
         async with self.lock:
             try:
+                # The fixture's local HTTP channel can drop a static manual
+                # level after a few minutes. Re-send studio-controlled output
+                # at every minute boundary, even on a flat program plateau.
+                if any(self.data[key] for key in ("program", "scene", "preview")):
+                    self.sent = None
                 await self.update_output()
             except (OSError, ValueError) as err:
                 self.sent = None
