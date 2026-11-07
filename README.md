@@ -82,8 +82,7 @@ Für eine Veröffentlichung:
 
 1. `version` in `custom_components/aipai_light/manifest.json` erhöhen.
 2. Einen gleichlautenden Eintrag in [CHANGELOG.md](CHANGELOG.md) ergänzen.
-3. Den Tag `v<version>` erzeugen und pushen, etwa `v0.16.1`.
-4. Der Release-Workflow prüft die Version und erstellt die GitHub Release.
+3. Nach dem Push auf `main` prüft der Release-Workflow die Version und erstellt automatisch den GitHub-Tag sowie die GitHub Release.
 
 HACS erkennt die neue Release und bietet Anwendern ein Update an.
 

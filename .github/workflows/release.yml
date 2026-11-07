@@ -2,8 +2,9 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,12 +15,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Validate release version
         run: python tools/validate_release.py
-      - name: Create release notes
+      - name: Read manifest version
+        id: version
+        run: |
+          echo "value=$(python -c 'import json; print(json.load(open("custom_components/aipai_light/manifest.json"))["version"])')" >> "$GITHUB_OUTPUT"
+      - name: Check whether the release already exists
+        id: existing
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: |
+          if gh release view "v${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create GitHub Release
+        if: steps.existing.outputs.value == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${{ steps.version.outputs.value }}" --generate-notes --target "$GITHUB_SHA"
