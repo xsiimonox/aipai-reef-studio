@@ -53,6 +53,30 @@ def fit_levels(levels: list[int], count: int) -> list[int]:
     return [levels[index] if index < len(levels) else 0 for index in range(count)]
 
 
+def firmware_schedule_rows(
+    points: list[dict], exposed_roads: int, firmware_roads: int
+) -> list[str]:
+    """Sample a Studio profile into the lamp's persistent 24-hour curves.
+
+    AIPAI firmware stores one value per full hour and interpolates between
+    those values itself. Hidden firmware roads are deliberately written as
+    zero so a six-channel fixture never receives UV/warm-white output.
+    """
+    hourly = [fit_levels(levels_at(points, hour * 60), exposed_roads) for hour in range(24)]
+    return [
+        ",".join(str(hourly[hour][road] if road < exposed_roads else 0) for hour in range(24))
+        for road in range(firmware_roads)
+    ]
+
+
+def needs_startup_hold(data: dict) -> bool:
+    """Whether a persisted override would write after an unattended restart."""
+    return bool(
+        data.get("scene") or data.get("preview") or data.get("restore")
+        or (data.get("program") and data.get("program_execution") != "device")
+    )
+
+
 def validate_item(kind: str, item: dict, count: int) -> dict:
     name = item.get("name", "")
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 64:
@@ -187,7 +211,7 @@ class ReefStudio:
         self.store = Store(hub.hass, 1, f"{DOMAIN}.studio.{hub.serial}")
         self.data = {
             "programs": {}, "scenes": {}, "program": None, "scene": None,
-            "preview": None, "restore": None,
+            "preview": None, "restore": None, "program_execution": None,
         }
         self.lock = asyncio.Lock()
         self.sent: list[int] | None = None
@@ -196,11 +220,13 @@ class ReefStudio:
         self.unsubscribe = None
         self.expiry_cancel = None
         self.closed = False
+        self.startup_hold = False
         self.library: ReefLibrary | None = None
 
     async def start(self) -> None:
         self.data.update(await self.store.async_load() or {})
         self.library = await async_get_library(self.hub.hass)
+        changed = False
         if not self.data.get("shared_library_migrated"):
             mapping = await self.library.import_legacy(self.data)
             if self.data.get("program") in mapping["programs"]:
@@ -210,7 +236,24 @@ class ReefStudio:
                     "id": mapping["scenes"][self.data["scene"]["id"]]
                 }
             self.data["shared_library_migrated"] = True
+            changed = True
+        # Releases before 0.22 ran an active program from HA in manual mode.
+        # Never resume that write loop merely because HA restarted: retain the
+        # actual lamp output until the user explicitly deploys the profile.
+        if self.data.get("program") and self.data.get("program_execution") not in (
+            "device", "ha", "hold"
+        ):
+            self.data["program_execution"] = "hold"
+            changed = True
+        self.startup_hold = needs_startup_hold(self.data)
+        if changed:
             await self.store.async_save(self.data)
+        if self.startup_hold:
+            self.hub.log_activity(
+                "Sicherer Startmodus",
+                "Keine Lichtwerte nach HA-Neustart gesendet; Profil bitte erneut auf der Lampe aktivieren.",
+                "warning",
+            )
         self._schedule_expiry()
         if self.hub.local:
             self.unsubscribe = async_track_time_change(self.hub.hass, self.tick, second=0)
@@ -242,6 +285,8 @@ class ReefStudio:
             "programs": self.library.data["programs"] if self.library else {},
             "scenes": self.library.data["scenes"] if self.library else {},
             **{key: self.data[key] for key in ("program", "scene", "preview")},
+            "program_execution": self.data.get("program_execution"),
+            "startup_hold": self.startup_hold,
             "serial": self.hub.serial,
             "name": self.hub.display_name,
             "labels": self.hub.labels,
@@ -288,17 +333,24 @@ class ReefStudio:
         self.expiry_cancel = async_call_later(self.hub.hass, delay, _expire)
 
     def owns_output(self) -> bool:
-        return any(self.data[key] for key in ("program", "scene", "preview", "restore"))
+        if self.startup_hold:
+            return False
+        return bool(
+            self.data.get("scene") or self.data.get("preview") or self.data.get("restore")
+            or (self.data.get("program") and self.data.get("program_execution") == "ha")
+        )
 
     async def tick(self, _now=None) -> None:
-        if self.closed or self.lock.locked():
+        if self.closed or self.lock.locked() or self.startup_hold:
             return
         async with self.lock:
             try:
                 # The fixture's local HTTP channel can drop a static manual
                 # level after a few minutes. Re-send studio-controlled output
                 # at every minute boundary, even on a flat program plateau.
-                if any(self.data[key] for key in ("program", "scene", "preview")):
+                if self.data.get("scene") or self.data.get("preview") or (
+                    self.data.get("program") and self.data.get("program_execution") == "ha"
+                ):
                     self.sent = None
                 await self.update_output()
             except (OSError, ValueError) as err:
@@ -315,7 +367,7 @@ class ReefStudio:
         if scene and scene.get("until") is not None and scene["until"] <= dt_util.utcnow().timestamp():
             await self.save({"scene": None})
             scene = None
-        program = self.data["program"]
+        program = self.data["program"] if self.data.get("program_execution") == "ha" else None
         restore = self.data["restore"]
         if not self.hub.local or not (program or scene or preview or restore):
             return
@@ -374,6 +426,48 @@ class ReefStudio:
         self.sent = target
         self.error = None
 
+    async def deploy_program(self, item_id: str) -> None:
+        """Persist a Studio program in the fixture and hand execution to it."""
+        if not self.hub.local or not self.hub.has_state or not self.hub.available:
+            raise OSError("Die Lampe ist gerade nicht lokal erreichbar.")
+        if self.library is None or item_id not in self.library.data["programs"]:
+            raise ValueError("Bitte ein gespeichertes Tagesprogramm wählen.")
+        program = validate_library_item("programs", self.library.data["programs"][item_id])
+
+        async def prepare(body: str) -> list[str]:
+            state = parse_readconfig(body)
+            fields = body.split("|")
+            if (
+                state.mode not in ("0", "1") or self.hub.roads > state.roads_real
+                or any(not field.strip().isdigit() for field in fields[2:5])
+                or any(not row or any(not value.isdigit() for value in row.split(","))
+                       for row in state.road_data)
+                or not state.timezone.lstrip("-").isdigit()
+            ):
+                raise ValueError("Das Konfigurationsformat passt nicht zum Kanalprofil.")
+            if state.power != "on":
+                raise ValueError("Bitte die Lampe vor dem Speichern einschalten.")
+            rows = firmware_schedule_rows(program["points"], self.hub.roads, state.roads_real)
+            deployed = replace(state, mode="1", road_data=rows)
+            tokens = build_saveconfig(deployed).split("x")
+            # Preserve the live fan thresholds reported by this exact fixture.
+            tokens[2:5] = [field.strip() for field in fields[2:5]]
+            return ["save=" + "x".join(tokens)]
+
+        await self.hub.client.async_studio_exchange(prepare)
+        self.startup_hold = False
+        await self.save({
+            "program": item_id, "program_execution": "device",
+            "scene": None, "preview": None, "restore": None,
+        })
+        self.sent = None
+        self.sent_at = dt_util.utcnow().isoformat()
+        self.error = None
+        self.hub.log_activity(
+            "Tagesprogramm auf Lampe gespeichert",
+            f"{program['name']}; 24 Stundenpunkte; lampeneigener Automatikmodus",
+        )
+
     async def command(self, msg: dict) -> None:
         async with self.lock:
             if self.closed:
@@ -411,9 +505,25 @@ class ReefStudio:
                     ):
                         raise ValueError("Bitte zuerst das aktive Programm oder die Szene beenden.")
                     await self.library.delete_item(kind, item_id)
-                if action == "save" and in_use:
-                    self.sent = None
+                if action == "save" and kind == "programs":
+                    active_device_studios = [
+                        other for other in (
+                            getattr(hub, "studio", None)
+                            for hub in self.hub.hass.data.get(DOMAIN, {}).values()
+                        )
+                        if other is not None and other.data.get("program") == item_id
+                        and other.data.get("program_execution") == "device"
+                    ]
                     try:
+                        for other in active_device_studios:
+                            await other.deploy_program(item_id)
+                    except (OSError, ValueError) as err:
+                        self.error = str(err)
+                        self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                        raise
+                elif action == "save" and in_use and not self.startup_hold:
+                    try:
+                        self.sent = None
                         await self.update_output()
                     except (OSError, ValueError) as err:
                         self.error = str(err)
@@ -427,6 +537,7 @@ class ReefStudio:
                     raise OSError("Die Lampe ist gerade nicht erreichbar.")
                 levels = validate_levels(msg.get("levels"), self.hub.roads)
                 preview_seconds = msg.get("preview_seconds", 5 * 60)
+                self.startup_hold = False
                 await self.save({
                     "preview": {"levels": levels, "until": dt_util.utcnow().timestamp() + preview_seconds},
                 })
@@ -445,23 +556,31 @@ class ReefStudio:
                     raise ValueError("Bitte einen gespeicherten Eintrag wählen.")
                 validate_library_item(kind, library[item_id])
                 if kind == "programs":
-                    await self.save({"program": item_id, "scene": None, "preview": None})
+                    await self.deploy_program(item_id)
+                    return
                 else:
+                    self.startup_hold = False
                     until = dt_util.utcnow().timestamp() + 60 * msg.get("duration", 15)
                     await self.save({"scene": {"id": item_id, "until": until}, "preview": None})
             elif action == "manual":
                 if kind != "scenes" or item_id not in library:
                     raise ValueError("Bitte eine gespeicherte Szene für den manuellen Modus wählen.")
                 validate_library_item("scenes", library[item_id])
+                self.startup_hold = False
                 await self.save({"scene": {"id": item_id, "until": None, "manual": True}, "preview": None})
             elif action == "preview_cancel":
                 # Only stop the temporary view.  Keep the program or scene
                 # underneath intact so the normal profile resumes immediately.
+                self.startup_hold = False
                 await self.save({"preview": None})
             elif action == "resume":
+                self.startup_hold = False
                 await self.save({"scene": None, "preview": None})
             else:
-                await self.save({"scene": None, "program": None, "preview": None})
+                self.startup_hold = False
+                await self.save({
+                    "scene": None, "program": None, "program_execution": None, "preview": None,
+                })
             self.sent = None
             try:
                 await self.update_output()

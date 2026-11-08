@@ -25,7 +25,8 @@ class MixedGroupTests(unittest.IsolatedAsyncioTestCase):
                                   available=True, display_name=serial, timezone="Europe/Berlin",
                                   _now=lambda: datetime.now(timezone.utc))
             studio = SimpleNamespace(hub=hub, command=AsyncMock(), library=SimpleNamespace(data={"programs": {}, "scenes": {}}),
-                                     data={"program": None, "scene": None, "preview": None})
+                                     data={"program": None, "program_execution": None, "scene": None, "preview": None},
+                                     startup_hold=False)
             hub.studio = studio
             studios[serial] = studio
         group = ReefGroups(SimpleNamespace(data={"aipai_light": {key: value.hub for key, value in studios.items()}}))

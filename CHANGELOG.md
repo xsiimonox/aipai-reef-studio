@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.22.0] - 2026-11-08
+
+### Added
+
+- „Auf Lampe speichern & aktivieren“ ist der neue Standard für Tagesprogramme. Reef Studio überträgt eine 24-Punkte-Stundenkurve in den persistenten Speicher und schaltet den lampeneigenen Automatikmodus ein. Das Programm läuft ohne HA, Cloud, MQTT oder Internet weiter.
+- Die Oberfläche zeigt ausdrücklich „Auf Lampe gespeichert“ beziehungsweise den sicheren Startmodus an.
+
+### Fixed
+
+- Nach einem Home-Assistant-Neustart werden alte HA-gesteuerte Programme, Szenen oder Vorschauen nicht mehr automatisch erneut geschrieben. Der tatsächliche Lampenzustand bleibt unverändert, bis der Nutzer eine Aktion ausführt.
+- Änderungen an einem bereits auf der Lampe aktiven Profil werden beim Speichern erneut übertragen. Gemischte Gruppen erhalten pro Lampe nur ihre unterstützten Kanäle.
+
 ## [0.21.3] - 2026-11-07
 
 ### Added

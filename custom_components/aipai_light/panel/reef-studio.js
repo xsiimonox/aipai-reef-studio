@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.21.3";
+const REEF_STUDIO_VERSION = "0.22.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -135,6 +135,7 @@ class ReefStudioPanel extends HTMLElement {
   get $() { return this.shadowRoot; }
 
   activeMode(light) {
+    if (light.startup_hold) return "Sicherer Start · Lampenzustand unverändert";
     if (light.preview) return "Live-Vorschau";
     if (light.bridge_mode === "lease") return "Home Assistant · zeitlich bestätigte Steuerung";
     if (light.bridge_mode === "manual" && !light.scene) return "Manueller Modus · dauerhaft";
@@ -143,7 +144,10 @@ class ReefStudioPanel extends HTMLElement {
       return light.scene.manual ? `Manueller Modus · ${scene?.name ?? "Szene"}` :
         `Szene aktiv · ${scene?.name ?? "Unbekannte Szene"}`;
     }
-    if (light.program) return `Tagesprogramm aktiv · ${light.programs[light.program]?.name ?? "Unbekannt"}`;
+    if (light.program) {
+      const name = light.programs[light.program]?.name ?? "Unbekannt";
+      return light.program_execution === "device" ? `Auf Lampe gespeichert · ${name}` : `Tagesprogramm aktiv · ${name}`;
+    }
     if (light.restoring) return "Vorherigen Lampenzustand wiederherstellen";
     return "Lampeneigener Modus";
   }
@@ -202,7 +206,7 @@ class ReefStudioPanel extends HTMLElement {
     const signature = list => JSON.stringify(list.map(
       light => [
         light.serial, light.name, light.labels, light.programs, light.scenes, light.local,
-        light.program, light.scene, light.preview, light.activity,
+        light.program, light.program_execution, light.startup_hold, light.scene, light.preview, light.activity,
       ]
     ));
     const changed = signature([...payload.lights, ...payload.groups]) !== signature(this.lights) ||
@@ -252,7 +256,8 @@ class ReefStudioPanel extends HTMLElement {
       });
       if (action === "save" || action === "delete") this.reset();
       this.receive(lights);
-      this.status(action === "save" ? "In der Bibliothek gespeichert." : "");
+      this.status(action === "save" ? "In der Bibliothek gespeichert." :
+        action === "activate" && this.kind === "programs" ? "Tagesprogramm dauerhaft auf der Lampe gespeichert." : "");
     } catch (error) {
       this.status(error.message || "Der Befehl konnte nicht ausgeführt werden.");
     } finally {
@@ -381,10 +386,11 @@ class ReefStudioPanel extends HTMLElement {
     this.$.querySelector("#online").textContent = light.online ? `Erreichbar${temperatureText}` : "Offline";
     const actual = light.online ? (light.sent ?? light.reported) : null;
     const label = light.sent ? "Zuletzt an die Lampe gesendet" :
+      light.program_execution === "device" ? "Aktuelle Pegel aus dem Lampenprogramm" :
       light.mode === "0" ? "Manuelle Pegel der Lampe" : "Von der Lampe gemeldet";
     const comparisonOpen = this.$.querySelector(".comparison")?.open;
     this.$.querySelector("#live").innerHTML = `
-      <small>${escape(light.preview ? "Live-Vorschau · noch " + this.durationText(previewRemaining) + " · danach Tagesprofil" : scene ? (light.scene?.manual ? "Manueller Modus · " + scene.name + " · dauerhaft" : "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining)) : program ? "Aktiv · " + program.name :
+      <small>${escape(light.startup_hold ? "Sicherer Startmodus · es wurden nach dem Neustart keine Lichtwerte gesendet" : light.preview ? "Live-Vorschau · noch " + this.durationText(previewRemaining) + " · danach Tagesprofil" : scene ? (light.scene?.manual ? "Manueller Modus · " + scene.name + " · dauerhaft" : "Szene · " + scene.name + " · noch " + this.durationText(sceneRemaining)) : program ? (light.program_execution === "device" ? "Läuft ausfallsicher in der Lampe · " : "Aktiv · ") + program.name :
         light.restoring ? "Warte auf Wiederherstellung" : "Lampeneigener Modus")}</small>
       <div class="notice">${escape(light.error)}</div><small>${label}</small>${this.bars(actual)}
       ${points.length > 1 ? `<details class="comparison" ${comparisonOpen ? "open" : ""}><summary>Geplante Kanalwerte · ${clock(preview)}</summary>
@@ -393,7 +399,7 @@ class ReefStudioPanel extends HTMLElement {
     const buttons = [
       light.preview && ["preview_cancel", "Timer abbrechen – Tagesprofil fortsetzen"],
       scene && ["resume", "Szene abbrechen – Tagesprogramm fortsetzen"],
-      !light.preview && (light.program || light.scene || light.restoring) && ["release", "Lampeneigenen Modus wiederherstellen"],
+      !light.preview && (light.scene || light.restoring || (light.program && light.program_execution !== "device")) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
     const signature = JSON.stringify(buttons);
     if (control.dataset.buttons !== signature) {
@@ -440,12 +446,12 @@ class ReefStudioPanel extends HTMLElement {
     const node = this.$.querySelector("#editor");
     node.innerHTML = `<div class="row spread"><h2>${programs ? "Programmbibliothek" : "Szenenbibliothek"}</h2>
       <button id="new" class="primary">${programs ? "+ Programm" : "+ Szene"}</button></div>
-      <p class="muted">${programs ? "Gemeinsame Bibliothek für alle Lampen. Zwischen den Zeitpunkten gehen die Kanalwerte gleichmäßig ineinander über." :
+      <p class="muted">${programs ? "Gemeinsame Bibliothek für alle Lampen. Beim Aktivieren wird das Profil dauerhaft als 24-Stunden-Kurve in der Lampe gespeichert und läuft danach ohne Home Assistant weiter." :
         "Gemeinsame Looks für alle Lampen, etwa Blaulicht oder Foto. Zeitlich starten oder im manuellen Modus dauerhaft halten."}${light.group && light.labels.length > 6 ? " UV und Warm White wirken nur auf Lampen, die diese Kanäle unterstützen." : ""}</p>
       <div class="actions library-actions">${Object.keys(library).length ? `
         <select id="library" aria-label="Gespeicherter Eintrag"><option value="">Eintrag auswählen</option>
         ${Object.entries(library).map(([id, item]) => `<option value="${escape(id)}" ${id === this.itemId ? "selected" : ""}>${escape(item.name)}</option>`).join("")}</select>` : '<small>Noch keine Einträge.</small>'}
-        ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Programm aktivieren" : "Szene starten"}</button>
+        ${this.itemId ? `<button id="activate" data-live class="primary">${programs ? "Auf Lampe speichern & aktivieren" : "Szene starten"}</button>
         ${programs ? "" : `<label class="field">Dauer · 1–60 Minuten<input id="duration" type="number" min="1" max="60" value="${this.duration}"></label>
         <button id="manual" data-live>Dauerhaft manuell</button>`}
         <button id="copy">Duplizieren</button><button id="delete" class="danger">Löschen</button>` : ""}
@@ -563,7 +569,7 @@ class ReefStudioPanel extends HTMLElement {
           <input type="number" min="0" max="100" step="1" value="${levels[i]}" data-level="${i}" aria-label="${escape(label)} Prozent"></label>`).join("")}</div>
       </div></div><div class="actions save-actions"><button id="save" class="primary">${this.itemId ? "Änderungen speichern" : "In Bibliothek speichern"}</button>
         ${this.itemId ? `<button id="save-new">${programs ? "Als neues Programm" : "Als neue Szene"} speichern</button>` : ""}
-        <small>Speichern aktualisiert die gemeinsame Bibliothek, auch bei aktiven Profilen. Mit „${programs ? "Programm aktivieren" : "Szene starten"}“ wählst du den Eintrag für ${this.light.group ? "die Gruppe" : "die Lampe"} aus.</small></div>`;
+        <small>${programs ? "Speichern aktualisiert die gemeinsame Bibliothek. Ein bereits auf dieser Lampe aktives Profil wird dabei erneut übertragen. „Auf Lampe speichern & aktivieren“ überträgt 24 Stundenpunkte; die Lampen-Firmware interpoliert dazwischen und läuft danach unabhängig weiter." : `Speichern aktualisiert die gemeinsame Bibliothek. Mit „Szene starten“ wählst du den Eintrag für ${this.light.group ? "die Gruppe" : "die Lampe"} aus.`}</small></div>`;
     node.querySelector("#name").oninput = event => { item.name = event.target.value; };
     node.querySelectorAll("[data-level]").forEach(input => {
       input.oninput = () => {

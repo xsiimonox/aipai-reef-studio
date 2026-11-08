@@ -25,6 +25,8 @@ jobs:
         run: python tools/validate_studio_sync.py
       - name: Check mixed group channel routing
         run: python tools/test_groups.py
+      - name: Check persistent lamp schedule conversion
+        run: python tools/test_firmware_schedule.py
       - name: Compile Python integration
         run: python -m compileall -q custom_components/aipai_light tools
       - name: Validate Reef Studio JavaScript

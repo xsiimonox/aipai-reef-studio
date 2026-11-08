@@ -16,6 +16,7 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 - Reef Studio als native Home-Assistant-Seitenleiste
 - Mehrere Tagesprogramme mit jeweils 2–48 Stützpunkten
+- Ausfallsichere Tagesprogramme im persistenten 24-Stunden-Speicher der Lampe
 - Lineare Rampen für Sonnenauf- und -untergang
 - Szenen für Blaulicht, Fotos, Wartung oder Notbetrieb mit zeitgesteuerter Rückkehr zum Tagesprogramm
 - Mehrere Lampen in synchronisierten Gruppen
@@ -67,7 +68,9 @@ Den Ordner `custom_components/aipai_light` nach `/config/custom_components/aipai
 
 ### Tagesprogramme
 
-Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwischen zwei Punkten verläuft der Übergang linear. Der Rampen-Assistent erzeugt aus Sonnenaufgang, Hochrampe, Sonnenuntergang und Runterrampe direkt ein vollständiges Programm. Erst **Programm aktivieren** übernimmt es für die Lampe. Programme und Szenen liegen in einer gemeinsamen Bibliothek und sind daher an jeder eingerichteten Lampe verfügbar.
+Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwischen zwei Punkten verläuft der Übergang linear. Der Rampen-Assistent erzeugt aus Sonnenaufgang, Hochrampe, Sonnenuntergang und Runterrampe direkt ein vollständiges Programm. **Auf Lampe speichern & aktivieren** tastet den Verlauf auf die 24 Stundenpunkte der Firmware ab, speichert diese dauerhaft und schaltet den lampeneigenen Automatikmodus ein. Die Firmware interpoliert zwischen den Stundenwerten; das Programm läuft daher auch bei HA-, Internet- oder MQTT-Ausfall weiter. Programme und Szenen liegen in einer gemeinsamen Bibliothek und sind an jeder eingerichteten Lampe verfügbar.
+
+Nach einem Update aus einer älteren Version werden zuvor von HA ausgeführte Profile einmalig im **Sicheren Startmodus** gehalten: Reef Studio liest den Zustand, sendet aber beim HA-Neustart keine Lichtwerte. Das gewünschte Programm anschließend einmal auswählen und auf der Lampe aktivieren. Danach erscheint der Modus **Auf Lampe gespeichert**. Änderungen an diesem aktiven Profil werden beim Speichern erneut auf die erreichbare Lampe übertragen.
 
 ### Szenen
 
@@ -97,7 +100,7 @@ HACS erkennt die neue Release und bietet Anwendern ein Update an.
 
 ## Lokale Schnittstelle
 
-Die Integration liest `GET /?read=config` und sendet temporäre Kanalwerte über `GET /?<kanal>=<wert>`. Persistente Geräteeinstellungen werden nur nach einer vorherigen Prüfung der Lampenidentität geschrieben. Die Hilfsprogramme im Ordner `tools/` unterstützen die Diagnose im lokalen Netz.
+Die Integration liest `GET /?read=config` und sendet temporäre Kanalwerte über `GET /?<kanal>=<wert>`. Tagesprogramme werden nach einer erneuten Prüfung von Seriennummer und Protokollformat über `saveconfig` als 24 Stundenkurven in der Lampe gespeichert. Die Hilfsprogramme im Ordner `tools/` unterstützen die Diagnose im lokalen Netz.
 
 ## Lizenz
 

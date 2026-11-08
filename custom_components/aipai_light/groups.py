@@ -60,6 +60,9 @@ class ReefGroups:
             program = members[0].data.get("program")
             if not all(studio.data.get("program") == program for studio in members):
                 program = None
+            program_execution = members[0].data.get("program_execution")
+            if not all(studio.data.get("program_execution") == program_execution for studio in members):
+                program_execution = None
             scene = members[0].data.get("scene")
             if scene and not all(
                 other.data.get("scene") and other.data["scene"].get("id") == scene.get("id")
@@ -82,6 +85,8 @@ class ReefGroups:
                 "minute": members[0].hub._now().hour * 60 + members[0].hub._now().minute,
                 "timezone": str(members[0].hub.timezone), "reported": [], "firmware_points": [],
                 "programs": shared("programs"), "scenes": shared("scenes"), "program": program,
+                "program_execution": program_execution,
+                "startup_hold": any(studio.startup_hold for studio in members),
                 "scene": scene, "preview": preview, "sent": None, "sent_at": None, "error": None, "group": True,
             })
         return output

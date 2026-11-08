@@ -18,14 +18,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    const url=new URL(route.request().url());if(url.pathname==='/'){await route.fulfill({contentType:'text/html; charset=utf-8',body:html});return;}
    const msg=route.request().postDataJSON();if(msg){calls.push({path:url.pathname,body:msg});
     if(url.pathname==='/api/fixture'){
-     workspace.lamps.push({...msg,points,program:'day'});runtime.push({program:'day',scene:null,preview:null,online:true,minute:780,temperature:38.5,sent:[25,70,3,2,85,12,5,15],log:[]});
+     workspace.lamps.push({...msg,points,program:'day'});runtime.push({program:'day',program_execution:'hold',startup_hold:true,mode:'firmware',scene:null,preview:null,online:true,minute:780,temperature:38.5,log:[]});
     }
     if(url.pathname==='/api/studio'){
      if(msg.action==='save')workspace[msg.kind][msg.item_id||'saved-'+calls.length]=msg.item;
      if(msg.action==='group_save')workspace.groups[msg.item_id||'group1']={name:msg.name,serials:msg.serials};
      const targets=msg.serial?.startsWith('group:')?workspace.groups[msg.serial.slice(6)].serials:[msg.serial];
      workspace.lamps.forEach((lamp,i)=>{if(!targets.includes(lamp.serial))return;
-      if(msg.action==='activate'){if(msg.kind==='programs')runtime[i].program=msg.item_id;else runtime[i].scene={id:msg.item_id,until:Date.now()/1000+msg.duration*60};}
+      if(msg.action==='activate'){if(msg.kind==='programs'){lamp.program=msg.item_id;lamp.program_execution='device';runtime[i].program=msg.item_id;runtime[i].program_execution='device';runtime[i].startup_hold=false;runtime[i].mode='firmware';}else runtime[i].scene={id:msg.item_id,until:Date.now()/1000+msg.duration*60};}
       if(msg.action==='manual')runtime[i].scene={id:msg.item_id,until:null,manual:true};
       if(msg.action==='preview')runtime[i].preview={until:Date.now()/1000+msg.preview_seconds};
       if(msg.action==='preview_cancel')runtime[i].preview=null;
@@ -38,6 +38,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   // Empty workspace must still show an accessible onboarding form.
   await ui.locator('#device-name').fill('Riff · A7 SIII');await ui.locator('#device-ip').fill('192.0.2.20');await ui.locator('#device-serial').fill('DEMO6');await ui.locator('#store-device').click();
   await ui.locator('#library').waitFor();await ui.locator('#library').selectOption('day');
+  assert.equal(await ui.locator('#activate').textContent(),'Auf Lampe speichern & aktivieren');
+  await ui.locator('#activate').click();
+  assert(calls.some(c=>c.body.action==='activate'&&c.body.kind==='programs'&&c.body.item_id==='day'));
+  assert.equal(workspace.lamps[0].program_execution,'device');
+  await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').shadowRoot.querySelector('#active-mode').textContent.startsWith('Auf Lampe gespeichert'));
+  assert((await ui.locator('#active-mode').textContent()).startsWith('Auf Lampe gespeichert'));
   assert.equal(await ui.locator('[data-level][type=range]').count(),6);
   await ui.locator('[data-point="2"]').click();
   const originalPoints=await ui.evaluate(el=>structuredClone(el.draft.points));
@@ -62,6 +68,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').lights.length===2);
   await ui.locator('[data-tab=groups]').click();await ui.locator('#new-group').click();await ui.locator('#group-name').fill('Hauptbecken');
   for(const box of await ui.locator('[type=checkbox]').all())await box.check();await ui.locator('#save-group').click();
+  await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=programs]').click();await ui.locator('#library').selectOption('day');await ui.locator('#activate').click();
+  assert(runtime.every(lamp=>lamp.program_execution==='device'&&!lamp.startup_hold));
   await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=scenes]').click();await ui.locator('#library').selectOption('blue');
   await ui.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.scene?.manual===true);
   assert.equal(await ui.locator('[data-level][type=range]').count(),8);

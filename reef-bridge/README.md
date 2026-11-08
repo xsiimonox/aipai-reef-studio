@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.2.2** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme, Szenen und Gruppen laufen lokal auf dem ESP32. Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
+Firmware **0.3.0** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
 
 ![Reef Studio auf der Bridge](docs/bridge-desktop.png)
 
@@ -17,10 +17,10 @@ Firmware **0.2.2** mit demselben Reef-Studio-Editor wie Home Assistant. Tagespro
 - Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, duplizierbare Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und ein proportionaler Gesamtintensitätsregler für das vollständige Tagesprofil.
 - Gemeinsame lokale Programm- und Szenenbibliothek für alle Lampen dieser Bridge. Neue Einträge, Bearbeiten, Duplizieren, Löschen und Aktivieren. Bis 32 Programme und 32 Szenen, insgesamt maximal 48 KB JSON bzw. die verfügbare Parser-Kapazität; größere Änderungen werden mit Fehlermeldung abgelehnt.
 - Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
-- Programme laufen lokal, ohne offenen Browser oder Home Assistant. Jede Lampe hat einen eigenen aktiven Eintrag und eigene Timer. Ein Profilwechsel einer Lampe ändert nicht automatisch die Auswahl einer anderen Lampe.
+- „Auf Lampe speichern & aktivieren“ überträgt jedes Tagesprogramm als 24 Stundenpunkte in den persistenten Speicher der ausgewählten Lampe(n). Die Lampen-Firmware interpoliert und führt es ohne Bridge, Home Assistant, Cloud oder Internet weiter. Jede Lampe hat einen eigenen aktiven Eintrag.
 - Temporäre Szenen 1–60 Minuten, dauerhafter manueller Modus, Countdown und Abbruch. Regler einer einzelnen Lampe starten eine Vorschau für eine Minute im Programmeditor bzw. fünf Minuten im Szeneneditor. Gruppen lassen sich über die Uhrzeit-Vorschau oder eine gespeicherte Szene ansehen.
 - Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft Firmware-Updates nach WLAN-Verbindung und alle sechs Stunden. Installation bewusst über den USB-Installer; OTA ist noch nicht implementiert.
-- Beim Neustart bleiben Bibliothek, Lampen, Gruppen und aktive Tagesprogramme gespeichert. Szenen, manuelle Eingriffe und Vorschauen enden; nach gültiger NTP-Zeit übernimmt das lokale Tagesprofil.
+- Ein Bridge-Neustart sendet keine Lichtwerte und schaltet keine Lampe ein. Bestehende Programme älterer Bridge-Versionen erscheinen einmalig im sicheren Haltemodus und müssen zum dauerhaften Speichern erneut aktiviert werden.
 
 „Synchron gehalten“ bedeutet: Beide Pakete bauen den Editor direkt aus `custom_components/aipai_light/panel/reef-studio.js`. Der Adapter enthält nur Bridge-Transport und Hardwareeinrichtung. Es gibt keine zweite Kopie der Layouts oder Editoren. CI prüft die Studio-Version und baut die Bridge auch bei Änderungen am gemeinsamen Panel. Bereits geflashte Geräte erhalten neue Funktionen erst mit einem Firmware-Update. Die Bibliotheken einer HA-Installation und einer Bridge werden **nicht automatisch über das Netz miteinander abgeglichen**.
 
@@ -34,7 +34,7 @@ Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**.
 4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.4.1** aufrufen. Kein API-Token nötig.
 5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Die neue Bridge-IP im Router öffnen; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
 6. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
-7. Tagesprogramm grafisch erstellen, speichern und für Lampe oder Gruppe aktivieren. Neu hinzugefügte Lampen verwenden bis zur ersten Programmaktivierung ein ausgeschaltetes Fallback-Profil. Vor Betrieb die gewünschten Kanalwerte prüfen.
+7. Tagesprogramm grafisch erstellen, speichern und mit „Auf Lampe speichern & aktivieren“ für eine Lampe oder Gruppe übertragen. Dafür benötigt die Bridge einmalig eine gültige Netzwerkzeit. Vor Betrieb die Stundenkurve und gewünschten Kanalwerte prüfen.
 
 Beim ersten Start ab 0.2.0 wird eine bestehende 0.1-Konfiguration mitsamt Tagesplan und Szenen automatisch übernommen. Die alte Preferences-Konfiguration bleibt als Wiederherstellungskopie erhalten. Neue Daten werden in LittleFS über eine temporäre Datei gespeichert. Ein Mount-Fehler nach der ersten Initialisierung führt nicht zu automatischem Formatieren.
 
@@ -42,11 +42,11 @@ Terminal-Alternative: Unter GitHub Actions → „Reef Bridge firmware and insta
 
 ## Zeit und Ausfälle
 
-Nach jedem Kaltstart wird eine gültige NTP-Zeit benötigt, standardmäßig mit Internet. Ohne gültige Zeit schreibt die Bridge keinen zeitabhängigen Tagesplan. Einmal synchronisiert läuft die Uhr bis zum Neustart lokal weiter. Lokaler NTP-Server/RTC-Konfiguration ist noch nicht enthalten.
+Zum Übertragen eines Tagesprogramms benötigt die Bridge eine gültige NTP-Zeit, standardmäßig über das Internet. Sie synchronisiert die Lampenuhr beim Speichern, nach einer Wiederverbindung und anschließend alle sechs Stunden. Das bereits gespeicherte Programm läuft in der Lampe auch ohne Bridge und Internet weiter; nach einem Stromausfall der Lampe wird für die korrekte Uhrzeit erneut HA, Bridge, Hersteller-App oder eine andere Zeitquelle benötigt.
 
-Die Bridge sendet Zielwerte alle 30 Sekunden erneut. Netzwerktransaktionen zu den Lampen laufen nacheinander, nicht gleichzeitig; HTTP-Laufzeiten können den tatsächlichen Lichtwechsel verzögern. Timer werden unabhängig je Lampe verwaltet. Lüftergrenzen und lampeneigene Stundenkurven werden bei Moduswechseln erhalten. Seriennummer und Protokollformat werden vor jedem Schreibzyklus überprüft.
+Im Normalbetrieb liest die Bridge den Lampenstatus, schreibt aber keine fortlaufenden Tageswerte. Nur Vorschauen, Szenen, manueller Modus und optionale HA-Leases verwenden vorübergehend manuelle Zielwerte. Netzwerktransaktionen laufen nacheinander. Seriennummer und Protokollformat werden vor persistenten Schreibvorgängen überprüft.
 
-Beim Ausfall von HA läuft die Bridge weiter. Beim Ausfall der Bridge selbst gibt es **keinen garantierten automatischen Wechsel zum lampeneigenen Tagesplan**, da die Lampen für die feine Steuerung im manuellen Firmwaremodus stehen. „Lampeneigenen Modus wiederherstellen“ wechselt bewusst zurück zur Stundenkurve der Lampe. Nach Bridge-Neustart übernimmt wieder das lokale Bridge-Tagesprofil. Hersteller-App oder direkt schreibende HA-Integration während des Bridge-Betriebs nicht parallel zum Steuern verwenden.
+Beim Ausfall von HA oder Bridge läuft das dauerhaft gespeicherte Lampenprogramm weiter. Nach dem regulären Ablauf einer zeitlich begrenzten Szene/Vorschau stellt die Bridge den lampeneigenen Automatikmodus wieder her. Fällt die Bridge genau während eines manuellen Overrides aus, kann sie dessen Timer nicht mehr beenden; nach Wiederherstellung „Szene abbrechen“ wählen. Hersteller-App oder andere direkt schreibende Steuerungen nicht parallel verwenden.
 
 ## Optionale Home-Assistant-Anbindung
 

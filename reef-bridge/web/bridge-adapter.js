@@ -28,7 +28,8 @@ class BridgeTransport {
       const common = field => members.every(lamp=>field === 'scene' ? lamp.scene?.id === first.scene?.id && lamp.scene?.manual === first.scene?.manual : field === 'preview' ? !!lamp.preview === !!first.preview : JSON.stringify(lamp[field])===JSON.stringify(first[field])) ? first[field] : null;
       return {...first,serial:'group:'+id,group:true,group_id:id,name:group.name,members:group.serials,
         labels:BRIDGE_LABELS.slice(0,Math.max(...members.map(lamp=>lamp.labels.length))),
-        online:members.every(lamp=>lamp.online),program:common('program'),scene:common('scene'),preview:common('preview'),
+        online:members.every(lamp=>lamp.online),program:common('program'),program_execution:common('program_execution'),
+        startup_hold:members.some(lamp=>lamp.startup_hold),scene:common('scene'),preview:common('preview'),
         sent:null,reported:[],error:members.map(lamp=>lamp.error).filter(Boolean).join(' · ')};
     });
     return {lights,groups,update:{current:data.version,latest:data.update.latest,available:data.update.available,url:data.update.installer_url}};

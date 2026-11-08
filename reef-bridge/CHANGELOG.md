@@ -1,5 +1,12 @@
 # Reef Bridge Changelog
 
+## [0.3.0] - 2026-11-08
+
+- Tagesprogramme werden standardmäßig als 24 Stundenpunkte dauerhaft in jeder ausgewählten Lampe gespeichert und dort im Automatikmodus ausgeführt.
+- Bridge-Neustarts sind schreibgeschützt: ältere Bridge-Programme werden nicht ungefragt wieder in den manuellen Modus übernommen.
+- Lampenuhr wird beim Speichern, nach Wiederverbindung und alle sechs Stunden synchronisiert. Temporäre Szenen und Vorschauen kehren zum gespeicherten Lampenprogramm zurück.
+- Gemeinsamer Editor mit HA 0.22.0.
+
 ## [0.2.2] - 2026-11-07
 
 - Gesamtintensität skaliert das komplette Tagesprogramm statt nur des ausgewählten Zeitpunkts.

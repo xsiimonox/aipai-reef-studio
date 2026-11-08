@@ -21,9 +21,9 @@ const char* codes[] = {"w","b","r","g","b2","p","uv","wm"};
 const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
 const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 struct Lamp {
-  String mode="schedule", scene, error;
+  String mode="firmware", scene, error;
   int levels[8]={}, sent[8]={}, previewLevels[8]={};
-  uint32_t until=0, previewEnd=0, lastOutput=0;
+  uint32_t until=0, previewEnd=0, lastOutput=0, lastClockSync=0;
   bool online=false, force=true, releaseRequested=false;
   float temperature=NAN;
   String logs[24]; unsigned logCount=0;
@@ -156,10 +156,25 @@ void clockFor(int i,tm& local) {
   String zone=workspace["lamps"][i]["timezone"]|defaultZone;setenv("TZ",zone.c_str(),1);tzset();time_t now=time(nullptr);localtime_r(&now,&local);
 }
 void levelsFrom(JsonVariantConst values,int* target,int n) {for(int j=0;j<n;j++)target[j]=values[j]|0;}
+bool programLevels(JsonArray points,int minute,int* target,int n) {
+  if(points.size()<2)return false;int right=0;
+  for(size_t p=0;p<points.size();p++)if(points[p]["minute"].as<int>()>minute){right=p;break;}
+  JsonObject a=points[(right+points.size()-1)%points.size()],b=points[right];
+  int span=(b["minute"].as<int>()-a["minute"].as<int>()+1440)%1440;if(!span)return false;
+  float fraction=float((minute-a["minute"].as<int>()+1440)%1440)/span;
+  for(int j=0;j<n;j++){int av=a["levels"][j]|0,bv=b["levels"][j]|0;target[j]=lroundf(av+(bv-av)*fraction);}return true;
+}
+void returnToLampProgram(int i) {
+  Lamp& lamp=lamps[i];lamp.scene="";lamp.until=0;
+  if(String(workspace["lamps"][i]["program_execution"]|"")=="device"){
+    lamp.mode="firmware";lamp.releaseRequested=true;
+  }else lamp.mode="firmware";
+  lamp.force=true;
+}
 void expire(int i) {
   Lamp& lamp=lamps[i];
-  if(lamp.previewEnd&&expired(lamp.previewEnd)){lamp.previewEnd=0;lamp.force=true;logEvent(i,"Vorschau beendet: vorheriger Lichtmodus");}
-  if(lamp.until&&expired(lamp.until)){lamp.until=0;lamp.mode="schedule";lamp.scene="";lamp.force=true;logEvent(i,"Timer/HA-Lease beendet: Tagesprogramm");}
+  if(lamp.previewEnd&&expired(lamp.previewEnd)){lamp.previewEnd=0;if(lamp.mode=="firmware")lamp.releaseRequested=true;lamp.force=true;logEvent(i,"Vorschau beendet: vorheriger Lichtmodus");}
+  if(lamp.until&&expired(lamp.until)){returnToLampProgram(i);logEvent(i,"Timer/HA-Lease beendet: lokales Lampenprogramm");}
 }
 bool desired(int i,int* target) {
   Lamp& lamp=lamps[i];expire(i);
@@ -172,17 +187,51 @@ bool desired(int i,int* target) {
   if(time(nullptr)<1700000000){lamp.error="Warte auf gültige NTP-Uhrzeit";return false;}
   String id=workspace["lamps"][i]["program"]|"";
   JsonArray points=id.length()?workspace["programs"][id]["points"].as<JsonArray>():workspace["lamps"][i]["points"].as<JsonArray>();
-  if(points.size()<2)return false;
-  tm local;clockFor(i,local);int minute=local.tm_hour*60+local.tm_min,right=0;
-  for(size_t p=0;p<points.size();p++)if(points[p]["minute"].as<int>()>minute){right=p;break;}
-  JsonObject a=points[(right+points.size()-1)%points.size()],b=points[right];
-  int span=(b["minute"].as<int>()-a["minute"].as<int>()+1440)%1440;if(!span)return false;
-  float fraction=float((minute-a["minute"].as<int>()+1440)%1440)/span;
-  for(int j=0;j<channels(i);j++){int av=a["levels"][j]|0,bv=b["levels"][j]|0;target[j]=lroundf(av+(bv-av)*fraction);}return true;
+  tm local;clockFor(i,local);return programLevels(points,local.tm_hour*60+local.tm_min,target,channels(i));
+}
+bool syncLampClock(int i,String* fields,int roads) {
+  if(time(nullptr)<1700000000)return false;
+  time_t now=time(nullptr);tm local;clockFor(i,local);tm utc;gmtime_r(&now,&utc);utc.tm_isdst=-1;
+  long offset=long(difftime(mktime(&local),mktime(&utc)));long deviceOffset=fields[23+2*(roads-6)].toInt()*3600L;String reply;
+  if(!fetch(i,"clock="+String(long(now)+offset-deviceOffset),reply))return false;
+  lamps[i].lastClockSync=millis();return true;
+}
+bool deployProgram(int i,String id) {
+  Lamp& lamp=lamps[i];String fields[32];int n;
+  if(time(nullptr)<1700000000){lamp.error="Warte vor dem Speichern auf gültige Netzwerkzeit";return false;}
+  if(!lampState(i,fields,n)){if(lamp.error.isEmpty())lamp.error="Lampe für Programmspeicherung nicht erreichbar";return false;}
+  if(fields[0]!="on"){lamp.error="Bitte die Lampe vor dem Speichern einschalten";return false;}
+  JsonArray points=workspace["programs"][id]["points"].as<JsonArray>();int roads=n>28?8:6,physical=channels(i),target[8]={};
+  String query="save=onx1";for(int k=2;k<5;k++)query+="x"+fields[k];
+  for(int j=0;j<roads;j++)query+="x"+fields[5+j];
+  for(int j=0;j<roads;j++){
+    String row;
+    for(int hour=0;hour<24;hour++){
+      if(!programLevels(points,hour*60,target,physical)){lamp.error="Tagesprogramm kann nicht interpoliert werden";return false;}
+      if(hour)row+='y';row+=String(j<physical?target[j]:0);
+    }
+    query+="x"+row;
+  }
+  query+="x"+fields[19+2*(roads-6)]+"x"+fields[20+2*(roads-6)]+"x"+fields[23+2*(roads-6)];
+  String reply;if(!fetch(i,query,reply))return false;
+  // Keep the autonomous schedule aligned with this fixture's own timezone,
+  // including DST even though the lamp stores only a whole-hour UTC offset.
+  if(!syncLampClock(i,fields,roads))return false;
+  String confirmed[32];int confirmedCount;if(!lampState(i,confirmed,confirmedCount)||confirmed[1]!="1"){
+    lamp.error="Lampenprogramm konnte nicht bestätigt werden";return false;
+  }
+  lamp.mode="firmware";lamp.scene="";lamp.until=lamp.previewEnd=0;lamp.releaseRequested=false;lamp.force=false;lamp.online=true;lamp.error="";
+  logEvent(i,"Tagesprogramm dauerhaft auf Lampe gespeichert: "+id);return true;
 }
 void output(int i) {
-  Lamp& lamp=lamps[i];if(WiFi.status()!=WL_CONNECTED)return;int target[8]={};if(!lamp.releaseRequested&&!desired(i,target))return;
+  Lamp& lamp=lamps[i];if(WiFi.status()!=WL_CONNECTED)return;int target[8]={};bool hasTarget=desired(i,target);
   String fields[32];int n;
+  if(!lamp.releaseRequested&&!hasTarget){
+    if(lamp.mode!="firmware")return;
+    bool wasOnline=lamp.online;if(!lampState(i,fields,n)){lamp.online=false;if(lamp.error.isEmpty())lamp.error="Unbekanntes Lampenformat";return;}
+    int roads=n>28?8:6;if((!wasOnline||!lamp.lastClockSync||millis()-lamp.lastClockSync>=6UL*60*60*1000)&&time(nullptr)>=1700000000)syncLampClock(i,fields,roads);
+    lamp.online=true;lamp.error="";return;
+  }
   if(!lampState(i,fields,n)){lamp.online=false;if(lamp.error.isEmpty())lamp.error="Unbekanntes Lampenformat; kein Schreibzugriff";logEvent(i,lamp.error);return;}
   lamp.online=true;int roads=n>28?8:6;String reply;
   logEvent(i,"Ausgabe "+lamp.mode+"; power="+fields[0]+", mode="+fields[1]);
@@ -204,7 +253,9 @@ void status() {
   for(int i=0;i<count();i++){
     expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
     state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
-    if(lamp.mode!="firmware")state["program"]=workspace["lamps"][i]["program"];if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
+    String program=workspace["lamps"][i]["program"]|"",execution=workspace["lamps"][i]["program_execution"]|"hold";
+    if(program.length())state["program"]=program;state["program_execution"]=execution;state["startup_hold"]=program.length()&&execution!="device";
+    if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
     if(lamp.scene.length()) {JsonObject scene=state.createNestedObject("scene");scene["id"]=lamp.scene;if(lamp.until)scene["until"]=deadline(lamp.until);else scene["until"]=nullptr;scene["manual"]=lamp.mode=="manual";}
     if(lamp.previewEnd){JsonObject preview=state.createNestedObject("preview");preview["until"]=deadline(lamp.previewEnd);}
     if(lamp.mode!="firmware"){JsonArray sent=state.createNestedArray("sent");for(int j=0;j<channels(i);j++)sent.add(lamp.sent[j]);}
@@ -243,21 +294,38 @@ void studio(JsonDocument& msg) {
         next[kind].remove(id);
       }else{if(!id.length())id=newId();next[kind][id]=msg["item"];}
     }
-    if(persist(next)){for(int i=0;i<count();i++)lamps[i].force=true;ok();}return;
+    if(persist(next)){
+      if(action=="save"&&kind=="programs")for(int i=0;i<count();i++)if(
+        workspace["lamps"][i]["program"].as<String>()==id&&
+        String(workspace["lamps"][i]["program_execution"]|"")=="device"
+      )if(!deployProgram(i,id)){fail(lamps[i].error);return;}
+      ok();
+    }return;
   }
   if(!targetCount){fail("Lampe nicht gefunden");return;}
   if(action=="activate"||action=="manual"){
     if(!workspace[kind].containsKey(id)||(action=="manual"&&kind!="scenes")){fail("Bitte ein gespeichertes Profil wählen");return;}
     int minutes=msg["duration"]|15;if(minutes<1||minutes>60){fail("Dauer: 1–60 Minuten");return;}
-    if(kind=="programs") {DynamicJsonDocument next(65536);next.set(workspace);for(int i=0;i<count();i++)if(targets[i])next["lamps"][i]["program"]=id;if(!persist(next))return;}
-    for(int i=0;i<count();i++)if(targets[i]){Lamp& lamp=lamps[i];lamp.releaseRequested=false;lamp.previewEnd=0;lamp.scene=kind=="scenes"?id:"";lamp.mode=kind=="programs"?"schedule":action=="manual"?"manual":"scene";lamp.until=kind=="scenes"&&action!="manual"?millis()+minutes*60000UL:0;lamp.force=true;logEvent(i,"Aktiviert: "+id);}ok();return;
+    if(kind=="programs") {
+      for(int i=0;i<count();i++)if(targets[i]&&!deployProgram(i,id)){fail(lamps[i].error);return;}
+      DynamicJsonDocument next(65536);next.set(workspace);for(int i=0;i<count();i++)if(targets[i]){
+        next["lamps"][i]["program"]=id;next["lamps"][i]["program_execution"]="device";
+      }
+      if(persist(next))ok();return;
+    }
+    for(int i=0;i<count();i++)if(targets[i]){Lamp& lamp=lamps[i];lamp.releaseRequested=false;lamp.previewEnd=0;lamp.scene=id;lamp.mode=action=="manual"?"manual":"scene";lamp.until=action!="manual"?millis()+minutes*60000UL:0;lamp.force=true;logEvent(i,"Aktiviert: "+id);}ok();return;
   }
   if(action=="preview"){
     int seconds=msg["preview_seconds"]|60;if(seconds<1||seconds>3600||!validLevels(msg["levels"])){fail("Ungültige Vorschau");return;}
     for(int i=0;i<count();i++)if(targets[i]){levelsFrom(msg["levels"],lamps[i].previewLevels,channels(i));lamps[i].previewEnd=millis()+seconds*1000UL;lamps[i].force=true;}ok();return;
   }
   if(action!="preview_cancel"&&action!="resume"&&action!="release"){fail("Unbekannte Aktion");return;}
-  for(int i=0;i<count();i++)if(targets[i]){lamps[i].previewEnd=0;if(action=="resume"||action=="release"){lamps[i].mode="schedule";lamps[i].scene="";lamps[i].until=0;lamps[i].releaseRequested=action=="release";}lamps[i].force=true;}ok();
+  for(int i=0;i<count();i++)if(targets[i]){
+    lamps[i].previewEnd=0;
+    if(action=="resume"||action=="release"||(
+      action=="preview_cancel"&&lamps[i].mode=="firmware"
+    ))returnToLampProgram(i);else lamps[i].force=true;
+  }ok();
 }
 void checkUpdate() {
   lastUpdateCheck=millis();WiFiClientSecure client;client.setInsecure();HTTPClient http;http.setConnectTimeout(1200);http.setTimeout(2000);
@@ -296,7 +364,7 @@ void setup() {
   server.on("/api/control",HTTP_POST,[]{
     DynamicJsonDocument msg(1024);if(!body(msg))return;if(!count()){fail("Bitte zuerst eine Lampe einrichten");return;}
     String action=msg["action"]|"";Lamp& lamp=lamps[0];int seconds=msg["seconds"]|90;
-    if(action=="resume"){lamp.mode="schedule";lamp.scene="";lamp.until=lamp.previewEnd=0;lamp.force=true;ok();return;}
+    if(action=="resume"){lamp.previewEnd=0;returnToLampProgram(0);ok();return;}
     if(action!="lease"&&action!="preview"&&action!="manual"){fail("Unbekannte Aktion");return;}
     if(!validLevels(msg["levels"],channels(0))||seconds<1||seconds>(action=="lease"?90:3600)){fail("Pegel/Dauer ungültig");return;}
     if(action=="lease"&&lamp.mode=="manual"){fail("Manueller Modus aktiv",409);return;}
