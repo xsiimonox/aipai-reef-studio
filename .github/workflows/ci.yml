@@ -35,10 +35,10 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright@1.56.1
           npx playwright install --with-deps chromium
-      - name: Check both Studio transports
-        run: |
-          node tools/preview_studio.cjs
-          node reef-bridge/tools/preview.cjs
+      - name: Check Home Assistant Studio transport
+        run: node tools/preview_studio.cjs
+      - name: Check Reef Bridge Studio transport
+        run: node reef-bridge/tools/preview.cjs
 
   hassfest:
     name: Home Assistant manifest (hassfest)
