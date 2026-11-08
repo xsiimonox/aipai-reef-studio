@@ -1,5 +1,10 @@
 # Reef Bridge Changelog
 
+## [0.4.0] - 2026-11-08
+
+- Die gemeinsam mit Home Assistant verwendete Oberfläche heißt jetzt durchgängig **AiPai Studio**.
+- Browser-Titel, Dokumentation, Versionsanzeige und Screenshots wurden gemeinsam aktualisiert; technische URLs bleiben kompatibel.
+
 ## [0.3.0] - 2026-11-08
 
 - Tagesprogramme werden standardmäßig als 24 Stundenpunkte dauerhaft in jeder ausgewählten Lampe gespeichert und dort im Automatikmodus ausgeführt.
@@ -18,7 +23,7 @@
 
 ## [0.2.0] - 2026-11-07
 
-- Gemeinsamer Reef-Studio-Editor mit Home Assistant; keine zweite Designkopie.
+- Gemeinsamer AiPai-Studio-Editor mit Home Assistant; keine zweite Designkopie.
 - Programme und Szenen mit Kopieren, Bearbeiten, Gesamtintensität, Rampen-Assistent und Tageskurve.
 - Bis zu vier Lampen, gemeinsame Bibliothek (bis 32 Programme / 32 Szenen innerhalb des Speicherlimits), bis 16 Gruppen, einzelne Zeitzonen und Kanalprofile.
 - Vorschau 1–60 Minuten mit Countdown/Abbruch, Szenen, dauerhafter manueller Modus und HA-Lease mit Rückkehr zum lokalen Tagesprofil.

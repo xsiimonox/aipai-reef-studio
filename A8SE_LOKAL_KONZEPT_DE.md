@@ -1,11 +1,11 @@
 # AIPAI A8SE / A8SE II Max / A7: lokale Home-Assistant-Steuerung
 
-## Reef Studio
+## AiPai Studio
 
 Kopiere den vollständigen Ordner `custom_components/aipai_light` in das
 Konfigurationsverzeichnis von Home Assistant und starte Home Assistant neu.
 Aktiviere bei der Lampe **Local control**, wähle das passende Kanalprofil und
-öffne **Reef Studio** in der Seitenleiste mit einem Administratorkonto.
+öffne **AiPai Studio** in der Seitenleiste mit einem Administratorkonto.
 
 - **Tagesprogramme:** Lege Stützpunkte mit Uhrzeit und Prozentwert pro Kanal an.
   Der Rampen-Assistent legt anhand des ausgewählten Spektrums je zwei Punkte

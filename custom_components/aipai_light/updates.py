@@ -1,4 +1,4 @@
-"""GitHub release checks shared by Reef Studio and the HA update entity."""
+"""GitHub release checks shared by AiPai Studio and the HA update entity."""
 from __future__ import annotations
 
 import json
@@ -86,13 +86,13 @@ async def async_get_release_coordinator(hass) -> DataUpdateCoordinator:  # noqa:
         except (ClientError, TimeoutError, ValueError, json.JSONDecodeError) as err:
             # An offline Home Assistant must not make the integration fail to
             # load; the next periodic check will try again.
-            _LOGGER.debug("Could not check AIPAI Reef Studio release: %s", err)
+            _LOGGER.debug("Could not check AiPai Studio release: %s", err)
             return {"version": None, "url": None, "notes": "", "published_at": None}
 
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name="AIPAI Reef Studio release",
+        name="AiPai Studio release",
         update_method=_async_update_data,
         update_interval=timedelta(minutes=30),
     )

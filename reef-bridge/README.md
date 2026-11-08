@@ -1,12 +1,12 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.3.0** mit demselben Reef-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
+Firmware **0.4.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
 
-![Reef Studio auf der Bridge](docs/bridge-desktop.png)
+![AiPai Studio auf der Bridge](docs/bridge-desktop.png)
 
 <details><summary>Mobile Ansicht und Architektur</summary>
 
-<img src="docs/bridge-mobile.png" width="300" alt="Reef Studio auf dem Smartphone">
+<img src="docs/bridge-mobile.png" width="300" alt="AiPai Studio auf dem Smartphone">
 
 ![Architektur und HA-Fallback](docs/architecture.svg)
 
@@ -70,7 +70,7 @@ Der dauerhafte manuelle Modus lehnt HA-Leases mit HTTP 409 ab. Update-Status ste
 | Methode / Pfad | Funktion |
 | --- | --- |
 | GET `/api/status` | `workspace` mit Lampen/Bibliothek/Gruppen; `lights` mit Laufzeitstatus; Firmware, Update und kompatibler REST-Status der ersten Lampe |
-| POST `/api/studio` | Gleiche Aktionen wie Reef Studio: `save`, `delete`, `activate`, `manual`, `preview`, `preview_cancel`, `resume`, `release`, `group_save`, `group_delete` |
+| POST `/api/studio` | Gleiche Aktionen wie AiPai Studio: `save`, `delete`, `activate`, `manual`, `preview`, `preview_cancel`, `resume`, `release`, `group_save`, `group_delete` |
 | POST `/api/fixture` | `index` (-1 für neu), `name`, `lamp_ip`, `serial`, `channels`, `timezone` |
 | POST `/api/restore` | Vollständiges `workspace`-Backup importieren; alle Overrides beenden |
 | POST `/api/wifi` | `ssid`, `password` |

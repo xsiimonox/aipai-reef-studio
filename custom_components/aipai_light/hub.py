@@ -50,7 +50,7 @@ class AipaiLightHub:
         # Friendly device name (from the config flow). The user can still rename
         # the device in the HA UI afterwards - that override wins in the registry.
         self.name = (name or "").strip() or f"AIPAI Light {serial}"
-        # Small in-memory flight recorder for Reef Studio diagnostics. Keeping
+        # Small in-memory flight recorder for AiPai Studio diagnostics. Keeping
         # this at the hub catches state/connection events even outside the UI.
         self.activity = deque(maxlen=120)
         self._poll_interval = max(10, int(poll_interval))

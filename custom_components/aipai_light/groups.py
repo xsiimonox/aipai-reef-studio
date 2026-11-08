@@ -1,4 +1,4 @@
-"""Persistent lamp groups for Reef Studio."""
+"""Persistent lamp groups for AiPai Studio."""
 from __future__ import annotations
 
 from uuid import uuid4

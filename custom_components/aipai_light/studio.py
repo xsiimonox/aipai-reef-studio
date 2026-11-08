@@ -1,4 +1,4 @@
-"""Minute-resolution lighting and scenes for the native Reef Studio panel."""
+"""Minute-resolution lighting and scenes for the native AiPai Studio panel."""
 from __future__ import annotations
 
 import asyncio
@@ -131,7 +131,7 @@ def validate_library_item(kind: str, item: dict) -> dict:
 
 
 class ReefLibrary:
-    """One shared program and scene library for every Reef Studio fixture."""
+    """One shared program and scene library for every AiPai Studio fixture."""
 
     def __init__(self, hass) -> None:  # noqa: ANN001
         self.store = Store(hass, 1, f"{DOMAIN}.studio_library")
@@ -356,7 +356,7 @@ class ReefStudio:
             except (OSError, ValueError) as err:
                 self.sent = None
                 self.error = str(err)
-                self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                self.hub.log_activity("AiPai-Studio-Ausgabe fehlgeschlagen", str(err), "error")
 
     async def update_output(self) -> None:
         preview = self.data["preview"]
@@ -480,7 +480,7 @@ class ReefStudio:
             library = self.library.data[kind]
             scene = self.data["scene"]
             if action not in ("list",):
-                self.hub.log_activity("Reef-Studio-Aktion", action)
+                self.hub.log_activity("AiPai-Studio-Aktion", action)
             in_use = item_id is not None and (
                 self.data["program"] == item_id or (scene and scene["id"] == item_id)
             )
@@ -519,7 +519,7 @@ class ReefStudio:
                             await other.deploy_program(item_id)
                     except (OSError, ValueError) as err:
                         self.error = str(err)
-                        self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                        self.hub.log_activity("AiPai-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                         raise
                 elif action == "save" and in_use and not self.startup_hold:
                     try:
@@ -527,7 +527,7 @@ class ReefStudio:
                         await self.update_output()
                     except (OSError, ValueError) as err:
                         self.error = str(err)
-                        self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                        self.hub.log_activity("AiPai-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                         raise
                 return
             if not self.hub.local:
@@ -546,7 +546,7 @@ class ReefStudio:
                     await self.update_output()
                 except (OSError, ValueError) as err:
                     self.error = str(err)
-                    self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                    self.hub.log_activity("AiPai-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                     raise
                 return
             if action == "activate":
@@ -586,7 +586,7 @@ class ReefStudio:
                 await self.update_output()
             except (OSError, ValueError) as err:
                 self.error = str(err)
-                self.hub.log_activity("Reef-Studio-Ausgabe fehlgeschlagen", str(err), "error")
+                self.hub.log_activity("AiPai-Studio-Ausgabe fehlgeschlagen", str(err), "error")
                 raise
 
 

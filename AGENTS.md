@@ -1,4 +1,4 @@
-# Reef Studio / Reef Bridge maintenance
+# AiPai Studio / Reef Bridge maintenance
 
 - Maintain the Home Assistant panel and ESP32 Reef Bridge together. The canonical
   editor and styles are `custom_components/aipai_light/panel/reef-studio.js`;

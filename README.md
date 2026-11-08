@@ -1,9 +1,9 @@
-<p align="center"><img src="assets/reef-studio-logo.png" width="180" alt="AIPAI Reef Studio"></p>
+<p align="center"><img src="assets/reef-studio-logo.png" width="180" alt="AiPai Studio"></p>
 
-# AIPAI Reef Studio
+# AiPai Studio
 
 Lokale Home-Assistant-Integration für AIPAI Aquarium-LEDs, einschließlich A7,
-A8SE, A8SE II MAX und verwandter Doseen-Controller. Reef Studio steuert die
+A8SE, A8SE II MAX und verwandter Doseen-Controller. AiPai Studio steuert die
 Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 > Dieses Projekt ist ein unabhängiges, MIT-lizenziertes Derivat von
@@ -12,9 +12,9 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 ## Funktionen
 
-**[AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit demselben Reef-Studio-Editor, Bibliotheken und Gruppen für bis zu vier Lampen. USB-/Browser-Installer für macOS und Windows sowie optionale Home-Assistant-Anbindung mit lokalem Fallback. Beide Varianten verwenden eine gemeinsame Oberfläche; CI prüft zusammengehörige Versionen. Bibliotheksdaten zwischen HA und Bridge werden nicht automatisch abgeglichen.
+**[AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit demselben AiPai-Studio-Editor, Bibliotheken und Gruppen für bis zu vier Lampen. USB-/Browser-Installer für macOS und Windows sowie optionale Home-Assistant-Anbindung mit lokalem Fallback. Beide Varianten verwenden eine gemeinsame Oberfläche; CI prüft zusammengehörige Versionen. Bibliotheksdaten zwischen HA und Bridge werden nicht automatisch abgeglichen.
 
-- Reef Studio als native Home-Assistant-Seitenleiste
+- AiPai Studio als native Home-Assistant-Seitenleiste
 - Mehrere Tagesprogramme mit jeweils 2–48 Stützpunkten
 - Ausfallsichere Tagesprogramme im persistenten 24-Stunden-Speicher der Lampe
 - Lineare Rampen für Sonnenauf- und -untergang
@@ -25,7 +25,7 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 - Eigene IANA-Zeitzone je Lampe mit Sommerzeitkorrektur
 - Live-Anzeige der Tageskurve, Sollwerte und gemeldeten Kanalpegel
 
-## Einblick in Reef Studio
+## Einblick in AiPai Studio
 
 | Tagesprogramm und Live-Pegel | Szenenbibliothek und Schnellwechsel |
 | --- | --- |
@@ -46,14 +46,14 @@ Die Firmwarekennung allein ist nicht immer zuverlässig. Die tatsächliche Kanal
 
 1. HACS öffnen und über das Drei-Punkte-Menü **Custom repositories** wählen.
 2. Die URL dieses Repositories hinzufügen und als Typ **Integration** wählen.
-3. **AIPAI Reef Studio** herunterladen und Home Assistant neu starten.
-4. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** nach **AIPAI Reef Studio** suchen.
+3. **AiPai Studio** herunterladen und Home Assistant neu starten.
+4. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** nach **AiPai Studio** suchen.
 5. **Search network** auswählen und die gefundene Lampe hinzufügen.
 6. In den Integrationsoptionen **Local control**, das Kanalprofil und die gewünschte Zeitzone einstellen.
 
-Danach erscheint **Reef Studio** für Administratoren in der Seitenleiste.
+Danach erscheint **AiPai Studio** für Administratoren in der Seitenleiste.
 
-Reef Studio legt außerdem eine native Entität **Reef Studio update** an. Sie
+AiPai Studio legt außerdem eine native Entität **AiPai Studio update** an. Sie
 prüft veröffentlichte GitHub-Releases alle 30 Minuten und zeigt verfügbare
 Versionen unter **Einstellungen → System → Updates** an. Der Download selbst
 erfolgt weiterhin über HACS. HACS aktualisiert seine Repository-Informationen
@@ -64,13 +64,13 @@ nicht erzwingen.
 
 Den Ordner `custom_components/aipai_light` nach `/config/custom_components/aipai_light` kopieren und Home Assistant neu starten.
 
-## Reef Studio verwenden
+## AiPai Studio verwenden
 
 ### Tagesprogramme
 
 Ein Programm besteht aus Zeitpunkten und den Prozentwerten aller Kanäle. Zwischen zwei Punkten verläuft der Übergang linear. Der Rampen-Assistent erzeugt aus Sonnenaufgang, Hochrampe, Sonnenuntergang und Runterrampe direkt ein vollständiges Programm. **Auf Lampe speichern & aktivieren** tastet den Verlauf auf die 24 Stundenpunkte der Firmware ab, speichert diese dauerhaft und schaltet den lampeneigenen Automatikmodus ein. Die Firmware interpoliert zwischen den Stundenwerten; das Programm läuft daher auch bei HA-, Internet- oder MQTT-Ausfall weiter. Programme und Szenen liegen in einer gemeinsamen Bibliothek und sind an jeder eingerichteten Lampe verfügbar.
 
-Nach einem Update aus einer älteren Version werden zuvor von HA ausgeführte Profile einmalig im **Sicheren Startmodus** gehalten: Reef Studio liest den Zustand, sendet aber beim HA-Neustart keine Lichtwerte. Das gewünschte Programm anschließend einmal auswählen und auf der Lampe aktivieren. Danach erscheint der Modus **Auf Lampe gespeichert**. Änderungen an diesem aktiven Profil werden beim Speichern erneut auf die erreichbare Lampe übertragen.
+Nach einem Update aus einer älteren Version werden zuvor von HA ausgeführte Profile einmalig im **Sicheren Startmodus** gehalten: AiPai Studio liest den Zustand, sendet aber beim HA-Neustart keine Lichtwerte. Das gewünschte Programm anschließend einmal auswählen und auf der Lampe aktivieren. Danach erscheint der Modus **Auf Lampe gespeichert**. Änderungen an diesem aktiven Profil werden beim Speichern erneut auf die erreichbare Lampe übertragen.
 
 ### Szenen
 

@@ -1,4 +1,4 @@
-"""Home Assistant update entity for published AIPAI Reef Studio releases."""
+"""Home Assistant update entity for published AiPai Studio releases."""
 from __future__ import annotations
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
@@ -27,7 +27,7 @@ class AipaiReefStudioUpdate(CoordinatorEntity, UpdateEntity):
     """Expose published releases in Settings > System > Updates."""
 
     _attr_has_entity_name = True
-    _attr_name = "Reef Studio update"
+    _attr_name = "AiPai Studio update"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_supported_features = UpdateEntityFeature.RELEASE_NOTES
     _attr_auto_update = False
@@ -58,7 +58,7 @@ class AipaiReefStudioUpdate(CoordinatorEntity, UpdateEntity):
 
     @property
     def title(self) -> str:
-        return "AIPAI Reef Studio"
+        return "AiPai Studio"
 
     async def async_release_notes(self) -> str | None:
         notes = self.coordinator.data.get("notes") if self.coordinator.data else ""

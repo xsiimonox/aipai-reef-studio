@@ -126,7 +126,7 @@ class AipaiLocalClient:
     async def _async_cmd(self, query: str) -> None:
         async with self._request_lock:
             if self.studio_owns_output and self.studio_owns_output() and not query.startswith("clock="):
-                _LOGGER.debug("Ignoring legacy command while Reef Studio owns %s", self._serial)
+                _LOGGER.debug("Ignoring legacy command while AiPai Studio owns %s", self._serial)
                 return
             raw = await self._fetch_locked(query)
         self._set_conn(raw is not None)

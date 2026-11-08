@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.22.0";
+const REEF_STUDIO_VERSION = "0.23.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -283,7 +283,7 @@ class ReefStudioPanel extends HTMLElement {
     const mode = light ? this.activeMode(light) : "";
     this.$.innerHTML = `<style>${STYLE}</style><main><div class="shell">
       <header class="head"><div><div class="row"><ha-menu-button></ha-menu-button><div class="eyebrow">AIPAI / Aquarienbeleuchtung</div></div>
-      <h1>Reef Studio</h1><p class="muted">Tageslicht planen. Spektrum abstimmen. <span class="pill">v${REEF_STUDIO_VERSION}</span></p></div>
+      <h1>AiPai Studio</h1><p class="muted">Tageslicht planen. Spektrum abstimmen. <span class="pill">v${REEF_STUDIO_VERSION}</span></p></div>
         ${light ? `<label class="field device-field">Lampe oder Gruppe<select id="lamp">${this.lights.map(item =>
         `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}</option>`).join("")}</select></label>` : ""}
       </header><div id="notice" class="notice" role="status"></div>

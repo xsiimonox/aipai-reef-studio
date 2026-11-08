@@ -29,7 +29,7 @@ jobs:
         run: python tools/test_firmware_schedule.py
       - name: Compile Python integration
         run: python -m compileall -q custom_components/aipai_light tools
-      - name: Validate Reef Studio JavaScript
+      - name: Validate AiPai Studio JavaScript
         run: node --check custom_components/aipai_light/panel/reef-studio.js
       - name: Install browser test dependency
         run: |

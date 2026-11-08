@@ -32,7 +32,7 @@ async def async_setup_entry(
 ) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
     if isinstance(hub, AipaiLightHub):
-        return  # Reef Studio replaces the legacy light switches.
+        return  # AiPai Studio replaces the legacy light switches.
     from .experimental import ExperimentalDeviceHub
     from .experimental_entities import build_entities
 

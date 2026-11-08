@@ -2,11 +2,18 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.23.0] - 2026-11-08
+
+### Changed
+
+- Die sichtbare Produktbezeichnung lautet durchgängig **AiPai Studio** – in der Home-Assistant-Integration, Seitenleiste, Update-Entität, HACS, Bridge-Weboberfläche, Dokumentation und den aktualisierten Screenshots.
+- Bestehende technische IDs, Installationspfade und Repository-Adressen bleiben stabil, damit vorhandene Installationen und automatische Updates ohne Migration weiter funktionieren.
+
 ## [0.22.0] - 2026-11-08
 
 ### Added
 
-- „Auf Lampe speichern & aktivieren“ ist der neue Standard für Tagesprogramme. Reef Studio überträgt eine 24-Punkte-Stundenkurve in den persistenten Speicher und schaltet den lampeneigenen Automatikmodus ein. Das Programm läuft ohne HA, Cloud, MQTT oder Internet weiter.
+- „Auf Lampe speichern & aktivieren“ ist der neue Standard für Tagesprogramme. AiPai Studio überträgt eine 24-Punkte-Stundenkurve in den persistenten Speicher und schaltet den lampeneigenen Automatikmodus ein. Das Programm läuft ohne HA, Cloud, MQTT oder Internet weiter.
 - Die Oberfläche zeigt ausdrücklich „Auf Lampe gespeichert“ beziehungsweise den sicheren Startmodus an.
 
 ### Fixed
@@ -35,7 +42,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Changed
 
-- Reef Bridge 0.2.0 verwendet jetzt denselben Reef-Studio-Editor wie Home Assistant. Design, Programm-/Szeneneditor, Rampen-Assistent, Gesamtintensität, Gruppenbedienung und Diagnose werden aus einer gemeinsamen Quelldatei gebaut.
+- Reef Bridge 0.2.0 verwendet jetzt denselben AiPai-Studio-Editor wie Home Assistant. Design, Programm-/Szeneneditor, Rampen-Assistent, Gesamtintensität, Gruppenbedienung und Diagnose werden aus einer gemeinsamen Quelldatei gebaut.
 - CI prüft die gemeinsame Studio-Version; Änderungen am gemeinsamen Panel lösen auch den Firmware-Build der Bridge aus.
 
 ### Fixed
@@ -46,7 +53,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Changed
 
-- Reef Studio erhält eine ruhigere, Apple-inspirierte Oberfläche mit einheitlichen Feldhöhen, symmetrischen Editor-Spalten, segmentierter Navigation und besser lesbarer Typografie.
+- AiPai Studio erhält eine ruhigere, Apple-inspirierte Oberfläche mit einheitlichen Feldhöhen, symmetrischen Editor-Spalten, segmentierter Navigation und besser lesbarer Typografie.
 - Beschriftungen und Hilfetexte erklären Bibliothek, Aktivierung, Rampen und Live-Vorschau direkt am jeweiligen Bedienelement. Die Gesamtintensität und lange Lampennamen erhalten mehr Platz.
 - Auf Smartphones stehen Felder und Aktionen übersichtlich untereinander; Gruppenmitglieder sind als große Auswahlflächen bedienbar.
 
@@ -60,17 +67,17 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Added
 
-- Home Assistant erhält für jede AIPAI-Lampe eine native Update-Entität „Reef Studio update“. Sie prüft die neuesten veröffentlichten GitHub-Releases alle 30 Minuten und meldet verfügbare HACS-Updates unter **Einstellungen → System → Updates**, unabhängig davon, wann HACS seine Repository-Informationen aktualisiert.
+- Home Assistant erhält für jede AIPAI-Lampe eine native Update-Entität „AiPai Studio update“. Sie prüft die neuesten veröffentlichten GitHub-Releases alle 30 Minuten und meldet verfügbare HACS-Updates unter **Einstellungen → System → Updates**, unabhängig davon, wann HACS seine Repository-Informationen aktualisiert.
 
 ### Changed
 
-- Die Versionsanzeige in Reef Studio prüft ebenfalls den neuesten veröffentlichten GitHub-Release statt des veränderlichen `main`-Branches und aktualisiert ihren Cache alle 30 Minuten.
+- Die Versionsanzeige in AiPai Studio prüft ebenfalls den neuesten veröffentlichten GitHub-Release statt des veränderlichen `main`-Branches und aktualisiert ihren Cache alle 30 Minuten.
 
 ## [0.20.4] - 2026-11-07
 
 ### Changed
 
-- Programme und Szenen verwenden jetzt eine gemeinsame, Home-Assistant-weite Reef-Studio-Bibliothek. Jedes Profil ist dadurch an jeder Lampe verfügbar und kann auch von Lampengruppen gestartet werden.
+- Programme und Szenen verwenden jetzt eine gemeinsame, Home-Assistant-weite AiPai-Studio-Bibliothek. Jedes Profil ist dadurch an jeder Lampe verfügbar und kann auch von Lampengruppen gestartet werden.
 - Bestehende pro-Lampe-Bibliotheken werden beim ersten Laden automatisch und ohne Verlust in die gemeinsame Bibliothek übernommen.
 - Ein 8-Kanal-MAX-Profil lässt sich auf einer 6-Kanal-Lampe verwenden (UV/Warmweiß werden dort ignoriert); fehlende MAX-Kanäle eines 6-Kanal-Profils bleiben auf einer 8-Kanal-Lampe bei 0 %.
 
@@ -84,7 +91,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Reef Studio übernimmt aktuelle Gerätenamen aus der Home-Assistant-Geräteregistrierung. Umbenannte Lampen erscheinen beim nächsten Panel-Refresh auch in der Lampen- und Gruppenauswahl mit dem neuen Namen; Gruppenmitgliedschaften bleiben über die Seriennummer erhalten.
+- AiPai Studio übernimmt aktuelle Gerätenamen aus der Home-Assistant-Geräteregistrierung. Umbenannte Lampen erscheinen beim nächsten Panel-Refresh auch in der Lampen- und Gruppenauswahl mit dem neuen Namen; Gruppenmitgliedschaften bleiben über die Seriennummer erhalten.
 
 ## [0.20.1] - 2026-11-07
 
@@ -103,13 +110,13 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Added
 
-- Reef Studio zeigt die von der Lampe gemeldete interne Gerätetemperatur direkt neben dem Erreichbarkeitsstatus an.
+- AiPai Studio zeigt die von der Lampe gemeldete interne Gerätetemperatur direkt neben dem Erreichbarkeitsstatus an.
 
 ## [0.19.0] - 2026-11-07
 
 ### Added
 
-- Diagnose-Tab in Reef Studio mit kopierbarem Ereignisprotokoll. Er zeichnet Lampenstatus- und Moduswechsel, insbesondere `power=off`, lokale Verbindungsabbrüche, Wiederverbindungen, Reef-Studio-Aktionen und Ausgabefehler auf.
+- Diagnose-Tab in AiPai Studio mit kopierbarem Ereignisprotokoll. Er zeichnet Lampenstatus- und Moduswechsel, insbesondere `power=off`, lokale Verbindungsabbrüche, Wiederverbindungen, AiPai-Studio-Aktionen und Ausgabefehler auf.
 
 ## [0.18.7] - 2026-11-07
 
@@ -133,7 +140,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Reef Studio sendet bei jedem Minuten-Takt einen Keep-alive für aktive Tagesprogramme, Szenen, Live-Vorschauen und den dauerhaften manuellen Modus. Dadurch verwirft die Lampen-Firmware statische lokale Pegel nicht mehr nach einigen Minuten.
+- AiPai Studio sendet bei jedem Minuten-Takt einen Keep-alive für aktive Tagesprogramme, Szenen, Live-Vorschauen und den dauerhaften manuellen Modus. Dadurch verwirft die Lampen-Firmware statische lokale Pegel nicht mehr nach einigen Minuten.
 
 ## [0.18.3] - 2026-11-07
 
@@ -145,7 +152,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Die Statuskarte „Aktiver Lichtmodus“ aktualisiert sich bei jedem Moduswechsel sofort, ohne dass Reef Studio neu geöffnet werden muss.
+- Die Statuskarte „Aktiver Lichtmodus“ aktualisiert sich bei jedem Moduswechsel sofort, ohne dass AiPai Studio neu geöffnet werden muss.
 
 ## [0.18.1] - 2026-11-07
 
@@ -167,13 +174,13 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Added
 
-- Reef Studio zeigt die tatsächlich geladene Oberflächen-Version dauerhaft im Kopfbereich an.
+- AiPai Studio zeigt die tatsächlich geladene Oberflächen-Version dauerhaft im Kopfbereich an.
 
 ## [0.17.3] - 2026-11-07
 
 ### Added
 
-- Reef Studio zeigt einen Hinweis an, sobald eine neuere veröffentlichte GitHub-Version verfügbar ist. Die Abfrage erfolgt maximal alle sechs Stunden im Hintergrund und beeinflusst die lokale Lampensteuerung nicht.
+- AiPai Studio zeigt einen Hinweis an, sobald eine neuere veröffentlichte GitHub-Version verfügbar ist. Die Abfrage erfolgt maximal alle sechs Stunden im Hintergrund und beeinflusst die lokale Lampensteuerung nicht.
 
 ## [0.17.2] - 2026-11-07
 
@@ -183,13 +190,13 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Die native Reef-Studio-Panel-Datei erhält eine neue Cache-Version, damit Home Assistant nach dem Update zuverlässig die aktuelle Szenenbibliothek lädt.
+- Die native AiPai-Studio-Panel-Datei erhält eine neue Cache-Version, damit Home Assistant nach dem Update zuverlässig die aktuelle Szenenbibliothek lädt.
 
 ## [0.17.1] - 2026-11-07
 
 ### Fixed
 
-- Szenen werden nun serverseitig sekundengenau beendet, statt erst beim nächsten Minuten-Takt geprüft zu werden. Beim Start liest Reef Studio die gewählte Dauer direkt aus dem Eingabefeld.
+- Szenen werden nun serverseitig sekundengenau beendet, statt erst beim nächsten Minuten-Takt geprüft zu werden. Beim Start liest AiPai Studio die gewählte Dauer direkt aus dem Eingabefeld.
 
 ### Added
 
@@ -216,7 +223,7 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Bereits aktive Tagesprogramme und Szenen können bearbeitet und gespeichert werden. Reef Studio berechnet die neuen Werte danach sofort neu und übernimmt sie auf die Lampe; nur das Löschen eines aktiven Eintrags bleibt geschützt.
+- Bereits aktive Tagesprogramme und Szenen können bearbeitet und gespeichert werden. AiPai Studio berechnet die neuen Werte danach sofort neu und übernimmt sie auf die Lampe; nur das Löschen eines aktiven Eintrags bleibt geschützt.
 
 ## [0.16.2] - 2026-11-07
 
@@ -228,14 +235,14 @@ Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
 ### Fixed
 
-- Reef Studio wählt nach dem Laden der WebSocket-Antwort wieder zuverlässig die erste eingerichtete Lampe aus, statt fälschlich den Leerzustand anzuzeigen.
+- AiPai Studio wählt nach dem Laden der WebSocket-Antwort wieder zuverlässig die erste eingerichtete Lampe aus, statt fälschlich den Leerzustand anzuzeigen.
 
 ## [0.16.0] - 2026-11-06
 
 ### Added
 
 - Home-Assistant-Klassifizierung für Beleuchtungssysteme und Aquarien.
-- Reef Studio als native Home-Assistant-Oberfläche für Programme, Szenen und die Live-Tagesansicht.
+- AiPai Studio als native Home-Assistant-Oberfläche für Programme, Szenen und die Live-Tagesansicht.
 - Lineare und sinusförmige Rampen für jeden Übergang eines Tagesprogramms.
 - Lampengruppen mit synchronisiertem Start gleich benannter Programme und Szenen.
 - Einstellbare IANA-Zeitzone pro Lampe.
