@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.24.1] - 2026-11-11
+
+### Fixed
+
+- Statusmeldungen prüfen die tatsächliche Lampenuhr gegen die konfigurierte lokale Zeit. Abweichungen über zwei Minuten werden mit mindestens 60 Sekunden Abstand erneut korrigiert, auch wenn die Lampe durchgehend erreichbar bleibt.
+- Das Protokoll unterscheidet angeforderte Uhrkorrekturen von bestätigten zurückgelesenen Uhrzeiten. Mitternacht wird beim Vergleich korrekt behandelt.
+
 ## [0.24.0] - 2026-11-11
 
 ### Fixed

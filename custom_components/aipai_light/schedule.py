@@ -183,6 +183,20 @@ def clock_epoch(now: float, ha_offset_seconds: float, dev_offset_hours: int) -> 
     return int(now + ha_offset_seconds - int(dev_offset_hours) * 3600)
 
 
+def clock_drift_minutes(clock: str | None, hour: int, minute: int) -> int | None:
+    """Signed shortest clock difference, including midnight; invalid is unknown."""
+    try:
+        parts = (clock or "").replace(":", ",").split(",")
+        if len(parts) != 2:
+            return None
+        h, m = map(int, parts)
+        if not (0 <= h < 24 and 0 <= m < 60):
+            return None
+        return ((h * 60 + m - hour * 60 - minute + 720) % 1440) - 720
+    except (ValueError, TypeError):
+        return None
+
+
 def clock_needs_resync(
     current_offset: float | None,
     last_offset: float | None,

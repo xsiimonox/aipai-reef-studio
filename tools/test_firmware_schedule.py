@@ -16,8 +16,23 @@ exec(compile(ast.Module(body=definitions, type_ignores=[]), str(source), "exec")
 firmware_schedule_rows = namespace["firmware_schedule_rows"]
 needs_startup_hold = namespace["needs_startup_hold"]
 
+schedule_source = ROOT / "custom_components/aipai_light/schedule.py"
+schedule_tree = ast.parse(schedule_source.read_text())
+clock_definition = next(n for n in schedule_tree.body if isinstance(n, ast.FunctionDef) and n.name == "clock_drift_minutes")
+exec(compile(ast.Module(body=[clock_definition], type_ignores=[]), str(schedule_source), "exec"), namespace)
+clock_drift_minutes = namespace["clock_drift_minutes"]
+
 
 class FirmwareScheduleTests(unittest.TestCase):
+    def test_clock_drift_and_midnight(self):
+        self.assertEqual(clock_drift_minutes("19,30", 20, 30), -60)
+        self.assertEqual(clock_drift_minutes("21:30", 20, 30), 60)
+        self.assertEqual(clock_drift_minutes("23,59", 0, 1), -2)
+        self.assertEqual(clock_drift_minutes("00,01", 23, 59), 2)
+        self.assertEqual(clock_drift_minutes("20,30", 20, 30), 0)
+        for invalid in (None, "", "24,00", "12,60", "bad"):
+            self.assertIsNone(clock_drift_minutes(invalid, 20, 30))
+
     def test_only_confirmed_device_program_is_safe_to_resume_read_only(self):
         self.assertFalse(needs_startup_hold({
             "program": "day", "program_execution": "device",

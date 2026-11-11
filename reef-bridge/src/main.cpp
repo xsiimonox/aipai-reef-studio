@@ -201,7 +201,14 @@ bool syncLampClock(int i,String* fields,int roads) {
   time_t now=time(nullptr);tm local;clockFor(i,local);tm utc;gmtime_r(&now,&utc);utc.tm_isdst=-1;
   long offset=long(difftime(mktime(&local),mktime(&utc)));long deviceOffset=fields[23+2*(roads-6)].toInt()*3600L;String reply;
   if(!fetch(i,"clock="+String(long(now)+offset-deviceOffset),reply))return false;
-  lamps[i].lastClockSync=millis();return true;
+  lamps[i].lastClockSync=millis();logEvent(i,"Uhrkorrektur gesendet; Bestätigung beim nächsten Statusabruf");return true;
+}
+bool lampClockWrong(int i,String* fields,int roads) {
+  tm local;clockFor(i,local);int hour=-1,minute=-1;
+  String clock=fields[18+2*(roads-6)];clock.replace(':', ',');
+  if(sscanf(clock.c_str(),"%d,%d",&hour,&minute)!=2||hour<0||hour>23||minute<0||minute>59)return true;
+  int delta=abs(hour*60+minute-local.tm_hour*60-local.tm_min);
+  return min(delta,1440-delta)>2;
 }
 bool deployProgram(int i,String id) {
   Lamp& lamp=lamps[i];String fields[32];int n;
@@ -246,7 +253,11 @@ void output(int i) {
   if(!lamp.releaseRequested&&!hasTarget){
     if(lamp.mode!="firmware")return;
     bool wasOnline=lamp.online;if(!lampState(i,fields,n)){lamp.online=false;if(lamp.error.isEmpty())lamp.error="Unbekanntes Lampenformat";return;}
-    int roads=n>28?8:6;if((!wasOnline||!lamp.lastClockSync||millis()-lamp.lastClockSync>=6UL*60*60*1000)&&time(nullptr)>=1700000000)syncLampClock(i,fields,roads);
+    int roads=n>28?8:6;
+    if(time(nullptr)>=1700000000&&(!wasOnline||!lamp.lastClockSync||millis()-lamp.lastClockSync>=6UL*60*60*1000||(millis()-lamp.lastClockSync>=60000&&lampClockWrong(i,fields,roads)))){
+      logEvent(i,"Lampenuhr prüfen/korrigieren: "+lamp.deviceClock);
+      if(!syncLampClock(i,fields,roads)){lamp.error="Uhrkorrektur fehlgeschlagen";return;}
+    }
     lamp.online=true;lamp.error="";return;
   }
   if(!lampState(i,fields,n)){lamp.online=false;if(lamp.error.isEmpty())lamp.error="Unbekanntes Lampenformat; kein Schreibzugriff";logEvent(i,lamp.error);return;}

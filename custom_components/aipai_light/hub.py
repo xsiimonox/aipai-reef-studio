@@ -204,7 +204,7 @@ class AipaiLightHub:
     def auto_sync_clock(self) -> None:
         """Keep the device clock right automatically (no vendor-app popup needed)."""
         self.client.sync_clock(self._compensated_epoch())
-        self.log_activity("Lampenzeit synchronisiert", "Automatische Zeitsynchronisierung")
+        self.log_activity("Uhrkorrektur angefordert", f"Sollzeit={self._now().isoformat()}; Lampen-UTC-Offset={self.state.timezone}; Bestätigung beim nächsten Statusabruf")
         # Remember the offset/time we just synced for, so the hourly tick can tell
         # when DST (or the half-hour Adelaide flip) has changed it.
         self._last_offset = self._current_offset()
@@ -1073,6 +1073,17 @@ class AipaiLightHub:
             )
             self.state = state
             self.has_state = True
+            from .schedule import clock_drift_minutes
+            local_now = self._now()
+            drift = clock_drift_minutes(state.clock, local_now.hour, local_now.minute)
+            since_sync = time.monotonic() - self._last_clock_sync
+            if not first and since_sync >= 60:
+                if drift is None or abs(drift) > 2:
+                    self.log_activity("Lampenuhr abweichend", f"Lampe={state.clock}; Soll={local_now:%H:%M}; Abweichung={drift} min; korrigiere automatisch", "warning")
+                    self.auto_sync_clock()
+                elif getattr(self, "_clock_verified_sync", None) != self._last_clock_sync:
+                    self._clock_verified_sync = self._last_clock_sync
+                    self.log_activity("Lampenuhr bestätigt", f"Lampe={state.clock}; Soll={local_now:%H:%M}; Abweichung={drift} min")
             if first or previous and (
                 previous.road_val_pct != state.road_val_pct
                 or previous.road_data != state.road_data

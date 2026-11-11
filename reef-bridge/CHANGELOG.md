@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.5.1] - 2026-11-11
+
+- Im autonomen Betrieb werden zurückgelesene Lampenuhren auf Abweichungen über zwei Minuten geprüft und mit mindestens 60 Sekunden Abstand korrigiert. Uhrkorrekturen und Fehler werden protokolliert.
+
 ## [0.5.0] - 2026-11-11
 
 - Gemeinsamer Studio-Diagnose-Download für alle Lampen, mit Zeitstempeln und bis zu 32 begrenzten Ereignissen pro Lampe (nur aktuelle Sitzung).
