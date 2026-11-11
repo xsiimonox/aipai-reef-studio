@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.24.0] - 2026-11-11
+
+### Fixed
+
+- Tagesprogramme setzen alte native Schaltzeiten auf den unterstützten Bereich 00–23 Uhr zurück und synchronisieren die Uhr beim Speichern. Profile mit Licht nach 23 Uhr werden im nativen Modus ausdrücklich abgelehnt; hierfür externe Zeitplansteuerung verwenden, bis der Firmware-Grenzfall geprüft ist.
+- Zurückgelesene Kurven, Kanalwerte, Schaltzeiten und Zeitzone werden nach dem Speichern verglichen. Ein abweichender Speicherinhalt wird nicht mehr als erfolgreiche Aktivierung angezeigt.
+
+### Added
+
+- Diagnose-Download direkt im Studio, auch ohne Zwischenablage und für alle Lampen gleichzeitig; enthält Bibliothek, Lampenuhr, Zeitzonen, Schaltzeiten und Ereignisprotokoll.
+- Native HA-Diagnose enthält Studio-Zustand und Ereignisse. Protokoll erfasst Kanal-/Kurvenänderungen und Steuerbefehle; Verlauf gilt für die laufende Sitzung.
+
 ## [0.23.0] - 2026-11-08
 
 ### Changed

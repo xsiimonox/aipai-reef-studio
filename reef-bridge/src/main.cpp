@@ -26,7 +26,9 @@ struct Lamp {
   uint32_t until=0, previewEnd=0, lastOutput=0, lastClockSync=0;
   bool online=false, force=true, releaseRequested=false;
   float temperature=NAN;
-  String logs[24]; unsigned logCount=0;
+  String logs[32]; unsigned logCount=0;
+  String deviceClock, deviceTimezone, power, observed;
+  int openHour=0, closeHour=0;
 } lamps[MAX_LAMPS];
 bool fsReady=false, updateAvailable=false;
 String latestVersion, updateError, apPassword;
@@ -36,7 +38,9 @@ int count() { return workspace["lamps"].size(); }
 int channels(int i) { return workspace["lamps"][i]["channels"] | 6; }
 String newId() { return String((uint32_t)esp_random(),HEX)+String((uint32_t)esp_random(),HEX); }
 void logEvent(int i, String text) {
-  Serial.println(text); lamps[i].logs[lamps[i].logCount++%24]=text;
+  text="epoch="+String(long(time(nullptr)))+" uptime_ms="+String(millis())+" "+text;
+  if(text.length()>240)text=text.substring(0,240);
+  Serial.println(text); lamps[i].logs[lamps[i].logCount++%32]=text;
 }
 void fail(String message,int code=400) {
   DynamicJsonDocument data(512);data["error"]=message;String json;serializeJson(data,json);server.send(code,"application/json",json);
@@ -143,6 +147,9 @@ bool lampState(int i,String* fields,int& n) {
   int roads=n>28?8:6;
   if(n<25||fields[21+2*(roads-6)]!=workspace["lamps"][i]["serial"].as<String>()||channels(i)>roads){lamps[i].error="Seriennummer oder Kanalprofil passt nicht; kein Schreibzugriff";return false;}
   if((fields[0]!="on"&&fields[0]!="off")||(fields[1]!="0"&&fields[1]!="1"))return false;
+  Lamp& lamp=lamps[i];lamp.deviceClock=fields[18+2*(roads-6)];lamp.deviceTimezone=fields[23+2*(roads-6)];lamp.power=fields[0];lamp.openHour=fields[19+2*(roads-6)].toInt();lamp.closeHour=fields[20+2*(roads-6)].toInt();
+  String observed=fields[0]+"|"+fields[1];for(int k=5;k<5+2*roads;k++)observed+="|"+fields[k];
+  if(observed!=lamp.observed){logEvent(i,"Status geändert; Uhr="+lamp.deviceClock+"; UTC="+lamp.deviceTimezone+"; Schaltzeit="+String(lamp.openHour)+"–"+String(lamp.closeHour)+"; Status="+observed);lamp.observed=observed;}
   for(int k=2;k<5+2*roads;k++){
     if(fields[k].isEmpty())return false;
     for(size_t j=0;j<fields[k].length();j++){char c=fields[k][j];if((c<'0'||c>'9')&&!(k>=5+roads&&c==','))return false;}
@@ -208,11 +215,13 @@ bool deployProgram(int i,String id) {
     String row;
     for(int hour=0;hour<24;hour++){
       if(!programLevels(points,hour*60,target,physical)){lamp.error="Tagesprogramm kann nicht interpoliert werden";return false;}
+      if(hour==23&&j<physical&&target[j]>0){lamp.error="Licht nach 23 Uhr benötigt externe Zeitplansteuerung; native Schaltzeit unbestätigt";return false;}
       if(hour)row+='y';row+=String(j<physical?target[j]:0);
     }
     query+="x"+row;
   }
-  query+="x"+fields[19+2*(roads-6)]+"x"+fields[20+2*(roads-6)]+"x"+fields[23+2*(roads-6)];
+  for(JsonObject point:points)if(point["minute"].as<int>()>=1380)for(JsonVariant level:point["levels"].as<JsonArray>())if(level.as<int>()>0){lamp.error="Licht nach 23 Uhr benötigt externe Zeitplansteuerung";return false;}
+  query+="x0x23x"+fields[23+2*(roads-6)];
   String reply;if(!fetch(i,query,reply))return false;
   // Keep the autonomous schedule aligned with this fixture's own timezone,
   // including DST even though the lamp stores only a whole-hour UTC offset.
@@ -220,6 +229,14 @@ bool deployProgram(int i,String id) {
   String confirmed[32];int confirmedCount;if(!lampState(i,confirmed,confirmedCount)||confirmed[1]!="1"){
     lamp.error="Lampenprogramm konnte nicht bestätigt werden";return false;
   }
+  String saved="save=onx1";for(int k=2;k<5+roads;k++)saved+="x"+confirmed[k];
+  for(int k=5+roads;k<5+2*roads;k++){String row=confirmed[k];row.replace(',', 'y');saved+="x"+row;}
+  saved+="x"+confirmed[19+2*(roads-6)]+"x"+confirmed[20+2*(roads-6)]+"x"+confirmed[23+2*(roads-6)];
+  if(saved!=query){lamp.error="Gespeicherte Tageskurve oder Schaltzeiten weichen ab";return false;}
+  int hour=-1,minute=-1;tm local;clockFor(i,local);
+  int parsed=sscanf(confirmed[18+2*(roads-6)].c_str(),"%d,%d",&hour,&minute);
+  int delta=abs(hour*60+minute-local.tm_hour*60-local.tm_min);
+  if(parsed!=2||hour<0||hour>23||minute<0||minute>59||min(delta,1440-delta)>2){lamp.error="Lampenuhr stimmt nach Synchronisierung nicht";return false;}
   lamp.mode="firmware";lamp.scene="";lamp.until=lamp.previewEnd=0;lamp.releaseRequested=false;lamp.force=false;lamp.online=true;lamp.error="";
   logEvent(i,"Tagesprogramm dauerhaft auf Lampe gespeichert: "+id);return true;
 }
@@ -246,21 +263,22 @@ void output(int i) {
 }
 double deadline(uint32_t end) {return end&&!expired(end)?double(time(nullptr))+double(end-millis())/1000:0;}
 void status() {
-  DynamicJsonDocument doc(18000);
+  DynamicJsonDocument doc(48000);
   doc["version"]=BRIDGE_VERSION;doc["now_epoch"]=double(time(nullptr));doc["clock_valid"]=time(nullptr)>=1700000000;doc["ip"]=WiFi.localIP().toString();
   JsonObject update=doc.createNestedObject("update");update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;
   JsonArray lights=doc.createNestedArray("lights");
   for(int i=0;i<count();i++){
     expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
     state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
+    state["power"]=lamp.power;state["device_clock"]=lamp.deviceClock;state["device_timezone"]=lamp.deviceTimezone;state["open_hour"]=lamp.openHour;state["close_hour"]=lamp.closeHour;
     String program=workspace["lamps"][i]["program"]|"",execution=workspace["lamps"][i]["program_execution"]|"hold";
     if(program.length())state["program"]=program;state["program_execution"]=execution;state["startup_hold"]=program.length()&&execution!="device";
     if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
     if(lamp.scene.length()) {JsonObject scene=state.createNestedObject("scene");scene["id"]=lamp.scene;if(lamp.until)scene["until"]=deadline(lamp.until);else scene["until"]=nullptr;scene["manual"]=lamp.mode=="manual";}
     if(lamp.previewEnd){JsonObject preview=state.createNestedObject("preview");preview["until"]=deadline(lamp.previewEnd);}
     if(lamp.mode!="firmware"){JsonArray sent=state.createNestedArray("sent");for(int j=0;j<channels(i);j++)sent.add(lamp.sent[j]);}
-    JsonArray log=state.createNestedArray("log");unsigned start=lamp.logCount>24?lamp.logCount-24:0;
-    for(unsigned j=start;j<lamp.logCount;j++){JsonObject event=log.createNestedObject();event["at"]=String(j+1);event["message"]=lamp.logs[j%24];}
+    JsonArray log=state.createNestedArray("log");unsigned start=lamp.logCount>32?lamp.logCount-32:0;
+    for(unsigned j=start;j<lamp.logCount;j++){JsonObject event=log.createNestedObject();event["at"]=String(j+1);event["message"]=lamp.logs[j%32];}
   }
   // Preserve the first fixture's REST contract used by the HA lease package.
   if(count()){

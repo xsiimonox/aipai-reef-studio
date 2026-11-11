@@ -72,6 +72,14 @@ const root = path.resolve(__dirname, '..');
     await page.setViewportSize({ width: 320, height: 900 });
     assert(await panel.locator('#save-group').evaluate(el => el.getBoundingClientRect().right <= innerWidth));
     assert.deepEqual(errors, []);
+    await panel.locator('[data-tab=diagnostics]').click();
+    const downloadPromise = page.waitForEvent('download');
+    await panel.locator('#download-log').click();
+    const download = await downloadPromise;
+    assert(download.suggestedFilename().startsWith('aipai-studio-diagnose-'));
+    const report = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
+    assert.equal(report.lights.filter(light => !light.group).length, 2);
+    assert(report.lights[0].programs.day.points.length > 0);
     console.log('PASS: global program intensity, point duplication, 320–1440px layout, editors, groups, no JS errors. Screenshots: ' + screenshotDir);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

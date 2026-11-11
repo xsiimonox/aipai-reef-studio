@@ -2,6 +2,12 @@
 
 # AiPai Studio
 
+### Diagnose bei abweichenden Lichtzeiten
+
+Im Studio unter **Diagnose → Diagnose herunterladen** wird eine JSON-Datei mit allen Lampen, gespeicherten Programmen, Lampenuhr, Zeitzone, nativen Schaltzeiten und Ereignissen gespeichert. Der Download funktioniert auch ohne Zwischenablage. Der Verlauf beginnt beim Laden der Integration bzw. beim Bridge-Neustart; vor einem Neustart exportieren. Die Datei enthält Lampennamen und Seriennummern und ist für die persönliche Fehlersuche bestimmt. Home Assistants native Diagnosedatei enthält ebenfalls Studio-Zustand und Ereignisse.
+
+Nach dem Update ein Tagesprogramm bzw. eine Gruppe erneut mit **Auf Lampe speichern & aktivieren** übertragen. Dabei werden alte Ein-/Ausschaltzeiten vereinheitlicht und die Uhr synchronisiert; gespeicherte Kurven werden zurückgelesen und geprüft. Die bestätigte native Schaltzeit reicht von 00 bis 23 Uhr. Profile mit Licht nach 23 Uhr werden vor dem Schreiben abgelehnt, bis das Verhalten der Firmware an dieser Grenze verifiziert ist. Stundenkurven können minutengenau geplante Knicke nur angenähert wiedergeben; die Live-Vorschau nutzt das Originalprofil.
+
 Lokale Home-Assistant-Integration für AIPAI Aquarium-LEDs, einschließlich A7,
 A8SE, A8SE II MAX und verwandter Doseen-Controller. AiPai Studio steuert die
 Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.

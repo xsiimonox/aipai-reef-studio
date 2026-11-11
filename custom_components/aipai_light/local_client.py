@@ -32,7 +32,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .protocol import extract_config_body, parse_readconfig
+from .protocol import build_saveconfig, extract_config_body, parse_readconfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,8 +135,12 @@ class AipaiLocalClient:
         async with self._request_lock:
             return await self._fetch_locked(query)
 
-    async def async_studio_exchange(self, prepare) -> None:
-        """Serialize a verified read and the resulting commands with polling."""
+    async def async_studio_exchange(self, prepare) -> list[str]:
+        """Serialize a verified read and the resulting commands with polling.
+
+        Returning the exact (non-secret) query types lets AiPai Studio expose a
+        useful audit trail without recording the lamp's raw configuration.
+        """
         async with self._request_lock:
             raw = await self._fetch_locked("read=config")
             body = extract_config_body(raw or "")
@@ -156,6 +160,24 @@ class AipaiLocalClient:
                 state = parse_readconfig(confirmed) if confirmed else None
                 if state is None or state.serial != self._serial or state.mode != expected_mode:
                     raise OSError("Der neue Lampenmodus konnte nicht bestätigt werden.")
+                actual = build_saveconfig(state).split("x")
+                expected = commands[0][5:].split("x")
+                # Fan thresholds may be normalized by firmware; curves, manual
+                # levels, timer bounds and timezone must round-trip exactly.
+                if actual[5:] != expected[5:]:
+                    raise OSError("Gespeicherte Kanalwerte, Tageskurve oder Schaltzeiten weichen ab. Bitte erneut speichern.")
+                clock_command = next((q for q in commands if q.startswith("clock=")), None)
+                if clock_command:
+                    try:
+                        hour, minute = map(int, state.clock.split(","))
+                        expected_minute = (int(clock_command[6:]) // 60 + int(state.timezone) * 60) % 1440
+                        difference = abs((hour * 60 + minute) - expected_minute)
+                        if min(difference, 1440 - difference) > 2:
+                            raise ValueError("clock drift")
+                    except (ValueError, TypeError, AttributeError) as err:
+                        raise OSError("Lampenuhr stimmt nach Synchronisierung nicht mit der Profilzeit überein.") from err
+                self._on_message({"type": "readconfig", "msg": confirmed})
+            return commands
 
     async def _fetch_locked(self, query: str, *, retry: bool = True) -> str | None:
         """GET /?<query>; on failure re-resolve the IP by serial and retry once."""

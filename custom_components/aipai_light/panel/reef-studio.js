@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.23.0";
+const REEF_STUDIO_VERSION = "0.24.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -515,15 +515,30 @@ class ReefStudioPanel extends HTMLElement {
   diagnosticsEditor() {
     const node = this.$.querySelector("#editor");
     const events = [...(this.light.activity || [])].reverse();
-    const text = events.map(event => `[${event.at}] ${event.level.toUpperCase()} · ${event.event}${event.detail ? " — " + event.detail : ""}`).join("\n");
-    node.innerHTML = `<div class="row spread"><div><h2>Diagnoseprotokoll</h2><p class="muted">Die letzten ${events.length} Ereignisse dieser Home-Assistant-Sitzung. Besonders wichtig sind Warnungen zu power=off, Verbindungsabbrüchen und Ausgabefehlern.</p></div>
-      <button id="copy-log" ${events.length ? "" : "disabled"}>Protokoll kopieren</button></div>
+    const header = [
+      "AiPai Studio – Diagnoseexport",
+      `Erstellt: ${new Date().toISOString()}`,
+      `Lampe/Gruppe: ${this.light.name || this.light.serial}`,
+      `Seriennummer: ${this.light.serial}`,
+      `Aktiv: ${this.light.program ? "Tagesprogramm" : this.light.scene ? "Szene" : this.light.preview ? "Vorschau" : "keine Studio-Steuerung"}`,
+      "",
+    ].join("\n");
+    const report = {version: REEF_STUDIO_VERSION, created: new Date().toISOString(), history_scope: "Aktuelle Sitzung; vor Neustart exportieren", selected: this.light.serial, lights: this.lights};
+    const text = header + events.map(event => `[${event.at}] ${(event.level || 'info').toUpperCase()} · ${event.event}${event.detail ? " — " + event.detail : ""}`).join("\n") + "\n\n" + JSON.stringify(report, null, 2);
+    node.innerHTML = `<div class="row spread"><div><h2>Diagnoseprotokoll</h2><p class="muted">Die letzten ${events.length} Ereignisse dieser Home-Assistant-Sitzung (maximal 500). Erfasst Steueraktionen, Studio-Ausgaben, Statuswechsel, Verbindungswechsel und Fehler.</p></div>
+      <div class="row"><button id="download-log">Diagnose herunterladen</button><button id="copy-log">Diagnoseexport kopieren</button></div></div>
+      <p class="muted">Enthält Status, Programme und Ereignisse aller Lampen. Verlauf ab Start dieser Sitzung; bitte vor einem Neustart exportieren. Lokale Lampenkurven besitzen nur stündliche Stützpunkte; Vorschauen berechnen das Originalprofil minutengenau. Native Schaltzeiten werden beim Speichern auf 00–23 Uhr gesetzt; Verhalten nach 23 Uhr bitte anhand der Lampen-Firmware prüfen.</p>
       ${events.length ? `<ul class="log">${events.map(event => `<li class="${escape(event.level)}"><time>${escape(event.at)}</time><strong>${escape(event.event)}</strong>${event.detail ? `<br><small>${escape(event.detail)}</small>` : ""}</li>`).join("")}</ul>` : '<p class="muted">Noch keine Ereignisse protokolliert.</p>'}`;
     const copy = node.querySelector("#copy-log");
+    node.querySelector("#download-log").onclick = () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type: "application/json"}));
+      const link = document.createElement("a"); link.href = url; link.download = `aipai-studio-diagnose-${Date.now()}.json`;
+      document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
     if (copy) copy.onclick = async () => {
       try {
         await navigator.clipboard.writeText(text);
-        this.status("Diagnoseprotokoll wurde in die Zwischenablage kopiert.");
+        this.status("Vollständiger Diagnoseexport wurde in die Zwischenablage kopiert.");
       } catch (_error) {
         this.status("Kopieren nicht möglich – bitte das Protokoll manuell markieren.");
       }

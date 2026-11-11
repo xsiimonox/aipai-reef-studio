@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import replace
 from typing import Any
 from uuid import uuid4
@@ -296,6 +297,10 @@ class ReefStudio:
             "timezone": str(now.tzinfo),
             "now_epoch": dt_util.utcnow().timestamp(),
             "mode": state.mode,
+            "device_clock": state.clock,
+            "device_timezone": state.timezone,
+            "open_hour": state.open_hour,
+            "close_hour": state.close_hour,
             "power": state.power,
             "temperature": state.temperature,
             "reported": state.road_val_pct[:self.hub.roads] if self.hub.has_state else [],
@@ -374,15 +379,19 @@ class ReefStudio:
         if not self.hub.has_state:
             raise OSError("Warte auf den ersten Status der Lampe.")
         target = None
+        source = "Wiederherstellung"
         if preview:
+            source = "Vorschau"
             target = validate_levels(preview["levels"], self.hub.roads)
         elif scene:
+            source = f"Szene „{self.library.data['scenes'][scene['id']].get('name', scene['id'])}“"
             target = fit_levels(
                 validate_library_item("scenes", self.library.data["scenes"][scene["id"]])["levels"], self.hub.roads,
             )
         elif program:
             now = self.hub._now()
             validated = validate_library_item("programs", self.library.data["programs"][program])
+            source = f"Tagesprogramm „{validated['name']}“ um {now:%H:%M}"
             target = fit_levels(levels_at(validated["points"], now.hour * 60 + now.minute), self.hub.roads)
 
         async def prepare(body: str) -> list[str]:
@@ -418,13 +427,25 @@ class ReefStudio:
                 or level != self.sent[index]
             ]
 
-        await self.hub.client.async_studio_exchange(prepare)
+        commands = await self.hub.client.async_studio_exchange(prepare)
         if target is None:
             await self.save({"restore": None})
         if target != self.sent:
             self.sent_at = dt_util.utcnow().isoformat() if target is not None else None
         self.sent = target
         self.error = None
+        levels = ", ".join(
+            f"{self.hub.labels[index] if index < len(self.hub.labels) else f'Kanal {index + 1}'}={level}%"
+            for index, level in enumerate(target or [])
+        ) or "gespeicherte Werte wiederhergestellt"
+        command_summary = ", ".join(
+            "saveconfig" if command.startswith("save=") else command.split("=", 1)[0]
+            for command in commands
+        ) or "keine Änderung nötig"
+        self.hub.log_activity(
+            "AiPai-Studio-Ausgabe gesendet" if commands else "AiPai-Studio-Ausgabe geprüft",
+            f"{source}; Ziel: {levels}; Befehl: {command_summary}",
+        )
 
     async def deploy_program(self, item_id: str) -> None:
         """Persist a Studio program in the fixture and hand execution to it."""
@@ -448,11 +469,18 @@ class ReefStudio:
             if state.power != "on":
                 raise ValueError("Bitte die Lampe vor dem Speichern einschalten.")
             rows = firmware_schedule_rows(program["points"], self.hub.roads, state.roads_real)
-            deployed = replace(state, mode="1", road_data=rows)
+            if any(any(point["levels"]) and point["minute"] >= 1380 for point in program["points"]) or any(int(row.split(",")[23]) for row in rows):
+                raise ValueError("Licht nach 23 Uhr: Die native Schaltzeit ist nur für 0–23 Uhr bestätigt. Bitte das native Profil spätestens um 23 Uhr beenden.")
+            # The hourly curve defines darkness; stale vendor timers must not
+            # truncate a newly installed day profile. Use the documented hour range.
+            deployed = replace(state, mode="1", road_data=rows, open_hour=0, close_hour=23)
             tokens = build_saveconfig(deployed).split("x")
             # Preserve the live fan thresholds reported by this exact fixture.
             tokens[2:5] = [field.strip() for field in fields[2:5]]
-            return ["save=" + "x".join(tokens)]
+            from .schedule import clock_epoch
+            offset = self.hub._now().utcoffset().total_seconds()
+            epoch = clock_epoch(time.time(), offset, int(state.timezone))
+            return ["save=" + "x".join(tokens), f"clock={epoch}"]
 
         await self.hub.client.async_studio_exchange(prepare)
         self.startup_hold = False
@@ -480,7 +508,10 @@ class ReefStudio:
             library = self.library.data[kind]
             scene = self.data["scene"]
             if action not in ("list",):
-                self.hub.log_activity("AiPai-Studio-Aktion", action)
+                item_name = ""
+                if item_id in library:
+                    item_name = f" · {library[item_id].get('name', item_id)}"
+                self.hub.log_activity("AiPai-Studio-Aktion", f"{action}{item_name}")
             in_use = item_id is not None and (
                 self.data["program"] == item_id or (scene and scene["id"] == item_id)
             )

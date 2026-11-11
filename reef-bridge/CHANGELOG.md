@@ -1,5 +1,10 @@
 # Reef Bridge Changelog
 
+## [0.5.0] - 2026-11-11
+
+- Gemeinsamer Studio-Diagnose-Download für alle Lampen, mit Zeitstempeln und bis zu 32 begrenzten Ereignissen pro Lampe (nur aktuelle Sitzung).
+- Rücklesen und Vergleich gespeicherter Tageskurven und Schaltzeiten; alte native Schaltzeiten werden auf 00–23 Uhr gesetzt. Licht nach 23 Uhr benötigt bis zur Firmware-Verifikation externe Zeitplansteuerung.
+
 ## [0.4.0] - 2026-11-08
 
 - Die gemeinsam mit Home Assistant verwendete Oberfläche heißt jetzt durchgängig **AiPai Studio**.

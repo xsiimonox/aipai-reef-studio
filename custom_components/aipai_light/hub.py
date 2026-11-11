@@ -52,7 +52,9 @@ class AipaiLightHub:
         self.name = (name or "").strip() or f"AIPAI Light {serial}"
         # Small in-memory flight recorder for AiPai Studio diagnostics. Keeping
         # this at the hub catches state/connection events even outside the UI.
-        self.activity = deque(maxlen=120)
+        # Keep enough context to cover several hours of minute-by-minute Studio
+        # output, without turning diagnostics into an unbounded memory sink.
+        self.activity = deque(maxlen=500)
         self._poll_interval = max(10, int(poll_interval))
         self._connected = False
         self._last_reply = 0.0  # monotonic time of the last device reply
@@ -202,6 +204,7 @@ class AipaiLightHub:
     def auto_sync_clock(self) -> None:
         """Keep the device clock right automatically (no vendor-app popup needed)."""
         self.client.sync_clock(self._compensated_epoch())
+        self.log_activity("Lampenzeit synchronisiert", "Automatische Zeitsynchronisierung")
         # Remember the offset/time we just synced for, so the hourly tick can tell
         # when DST (or the half-hour Adelaide flip) has changed it.
         self._last_offset = self._current_offset()
@@ -267,6 +270,8 @@ class AipaiLightHub:
     def set_channel(self, index: int, value_cmd: int) -> None:
         value_cmd = max(0, min(1023, int(value_cmd)))
         _LOGGER.debug("WRITE %s set_channel ch%d = %d", self.serial, index, value_cmd)
+        label = self.labels[index] if index < len(self.labels) else f"Kanal {index + 1}"
+        self.log_activity("Lokaler Lampenbefehl", f"{label} = {cmd_to_pct(value_cmd)} %")
         self.channels[index] = value_cmd
         if value_cmd > 0:
             self._restore[index] = value_cmd
@@ -275,6 +280,7 @@ class AipaiLightHub:
 
     def turn_all_off(self) -> None:
         _LOGGER.debug("WRITE %s turn_all_off", self.serial)
+        self.log_activity("Lokaler Lampenbefehl", "Alle Kanäle auf 0 %")
         for i in range(self.roads):
             if self.channels[i] > 0:
                 self._restore[i] = self.channels[i]
@@ -283,6 +289,7 @@ class AipaiLightHub:
         self._notify()
 
     def turn_all_on(self) -> None:
+        self.log_activity("Lokaler Lampenbefehl", "Alle Kanäle auf zuletzt verwendete Werte")
         for i in range(self.roads):
             value = self._restore[i] or pct_to_cmd(50)
             self.channels[i] = value
@@ -547,6 +554,10 @@ class AipaiLightHub:
             return False
         self.state.mode = "1" if str(mode) == "1" else "0"
         _LOGGER.debug("WRITE %s set_mode -> %s", self.serial, self.state.mode)
+        self.log_activity(
+            "Lokaler Lampenbefehl",
+            f"Modus = {'Zeitplan' if self.state.mode == '1' else 'Manuell'}",
+        )
         self.client.save_config(build_saveconfig(self.state))
         self._notify()
         return True
@@ -593,6 +604,14 @@ class AipaiLightHub:
             "WRITE %s apply_schedule mode=%s curves=%s (saveconfig forces power on)",
             self.serial, self.state.mode, "yes" if road_data is not None else "unchanged",
         )
+        changed = []
+        if road_data is not None:
+            changed.append("Kurven")
+        if open_hour is not None or close_hour is not None:
+            changed.append("Ein-/Ausschaltzeit")
+        if mode is not None:
+            changed.append(f"Modus {'Zeitplan' if self.state.mode == '1' else 'Manuell'}")
+        self.log_activity("Lokaler Lampenbefehl", "Zeitplan gespeichert: " + (", ".join(changed) or "unverändert"))
         self.client.save_config(build_saveconfig(self.state))
         return True
 
@@ -1054,6 +1073,17 @@ class AipaiLightHub:
             )
             self.state = state
             self.has_state = True
+            if first or previous and (
+                previous.road_val_pct != state.road_val_pct
+                or previous.road_data != state.road_data
+                or previous.open_hour != state.open_hour
+                or previous.close_hour != state.close_hour
+                or previous.timezone != state.timezone
+            ):
+                self.log_activity("Lampenstatus gelesen", f"Uhr={state.clock}; UTC-Offset={state.timezone}; Schaltzeit={state.open_hour}–{state.close_hour}; power={state.power}; mode={state.mode}; Kanäle={state.road_val_pct}; Kurve geändert={bool(previous and previous.road_data != state.road_data)}")
+            if time.monotonic() - getattr(self, "_last_diagnostic_sample", 0) >= 300:
+                self._last_diagnostic_sample = time.monotonic()
+                self.log_activity("Zeit-/Statuskontrolle", f"Studio={self._now().isoformat()}; Lampenuhr={state.clock}; UTC-Offset={state.timezone}; power={state.power}; mode={state.mode}; Kanäle={state.road_val_pct}")
             if first:
                 self.log_activity("Status empfangen", f"power={state.power}, mode={state.mode}")
             elif previous and previous.power != state.power:

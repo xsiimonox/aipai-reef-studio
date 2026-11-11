@@ -49,4 +49,8 @@ async def async_get_config_entry_diagnostics(
             "moon": getattr(hub, "moon", None),
             "last_command": getattr(hub, "last_ack", None),
         }
+        studio = getattr(hub, "studio", None)
+        data["studio"] = studio.snapshot() if studio else None
+        data["events"] = list(getattr(hub, "activity", []))
+        data["history_scope"] = "Current integration session; export before restarting."
     return async_redact_data(data, TO_REDACT)
