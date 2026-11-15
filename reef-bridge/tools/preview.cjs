@@ -16,7 +16,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('http://bridge.test/**',async route=>{
    const url=new URL(route.request().url());if(url.pathname==='/'){await route.fulfill({contentType:'text/html; charset=utf-8',body:html});return;}
-   const msg=route.request().postDataJSON();if(msg){calls.push({path:url.pathname,body:msg});
+   const msg=route.request().postDataJSON();if(msg){await new Promise(resolve=>setTimeout(resolve,50));calls.push({path:url.pathname,body:msg});
     if(url.pathname==='/api/fixture'){
      workspace.lamps.push({...msg,points,program:'day'});runtime.push({program:'day',program_execution:'hold',startup_hold:true,mode:'firmware',scene:null,preview:null,online:true,minute:780,temperature:38.5,log:[]});
     }
@@ -40,6 +40,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('#library').waitFor();await ui.locator('#library').selectOption('day');
   assert.equal(await ui.locator('#activate').textContent(),'Auf Lampe speichern & aktivieren');
   await ui.locator('#activate').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='activate'&&c.body.kind==='programs'&&c.body.item_id==='day'));
   assert.equal(workspace.lamps[0].program_execution,'device');
   await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').shadowRoot.querySelector('#active-mode').textContent.startsWith('Auf Lampe gespeichert'));
@@ -69,11 +70,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('[data-tab=groups]').click();await ui.locator('#new-group').click();await ui.locator('#group-name').fill('Hauptbecken');
   for(const box of await ui.locator('[type=checkbox]').all())await box.check();await ui.locator('#save-group').click();
   await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=programs]').click();await ui.locator('#library').selectOption('day');await ui.locator('#activate').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(runtime.every(lamp=>lamp.program_execution==='device'&&!lamp.startup_hold));
   await ui.locator('#lamp').selectOption('group:group1');await ui.locator('[data-tab=scenes]').click();await ui.locator('#library').selectOption('blue');
   await ui.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.scene?.manual===true);
   assert.equal(await ui.locator('[data-level][type=range]').count(),8);
-  await ui.locator('[data-action=resume]').click();await ui.locator('#library').selectOption('blue');await ui.locator('#duration').fill('12');await ui.locator('#activate').click();
+  await ui.locator('[data-action=resume]').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
+  await ui.locator('#library').selectOption('blue');await ui.locator('#duration').fill('12');await ui.locator('#activate').click();
   await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='activate'&&c.body.duration===12&&c.body.serial==='group:group1'));
   await ui.locator('#new').click();assert(await ui.locator('#save').isVisible());
