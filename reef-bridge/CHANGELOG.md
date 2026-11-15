@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.6.0] - 2026-11-15
+
+- Gemeinsame Studio-Ladeanimation und Eingabesperre für Lampenbefehle, Gruppen und Live-Vorschauen. Auch Einrichtung, WLAN-Speicherung und Backup-Import sperren weitere Aktionen bis zur Antwort.
+
 ## [0.5.1] - 2026-11-11
 
 - Im autonomen Betrieb werden zurückgelesene Lampenuhren auf Abweichungen über zwei Minuten geprüft und mit mindestens 60 Sekunden Abstand korrigiert. Uhrkorrekturen und Fehler werden protokolliert.

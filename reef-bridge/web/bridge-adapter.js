@@ -83,7 +83,7 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
     const select=i=>{index=i;const lamp=lamps[i];node.querySelector('#device-name').value=lamp?.name||'';node.querySelector('#device-ip').value=lamp?.lamp_ip||'';node.querySelector('#device-serial').value=lamp?.serial||'';node.querySelector('#device-count').value=lamp?.channels||6;node.querySelector('#device-zone').value=lamp?.timezone||'CET-1CEST,M3.5.0,M10.5.0/3';};
     node.querySelectorAll('[data-fixture]').forEach(button=>button.onclick=()=>select(Number(button.dataset.fixture)));
     node.querySelector('#add-lamp').onclick=()=>select(-1);select(lamps.length?0:-1);
-    const run=async task=>{try{await task();await this.refresh();this.status('Gespeichert.');}catch(error){this.status(error.message);}};
+    const run=async task=>{if(this.busy)return;this.setBusy(true);try{await task();this.receive(await this._hass.callWS({action:'list'}));this.status('Gespeichert.');}catch(error){this.status(error.message);}finally{this.setBusy(false);this.update();}};
     node.querySelector('#store-device').onclick=()=>run(async()=>{
       for (const id of ['device-name','device-ip','device-serial','device-zone']) if(!node.querySelector('#'+id).reportValidity())return;
       await this._hass.api('fixture',{index,name:node.querySelector('#device-name').value,lamp_ip:node.querySelector('#device-ip').value,serial:node.querySelector('#device-serial').value,channels:Number(node.querySelector('#device-count').value),timezone:node.querySelector('#device-zone').value});

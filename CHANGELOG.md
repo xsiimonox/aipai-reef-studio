@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.25.0] - 2026-11-15
+
+### Added
+
+- Ladeanimation mit gesperrter Oberfläche während schreibender Übertragungen, einschließlich Live-Vorschau, Gruppen und Bridge-Einrichtung. Tastatur- und Mausbedienung werden bis zur Antwort blockiert; nach Erfolg oder Fehler wird die Oberfläche freigegeben.
+- Doppelte Befehle werden abgefangen, ausstehende Slider-Vorschauen beim Start einer anderen Aktion verworfen. Die Sperre bleibt auch beim Neuzeichnen der Oberfläche erhalten.
+
 ## [0.24.1] - 2026-11-11
 
 ### Fixed

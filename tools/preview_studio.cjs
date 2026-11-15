@@ -80,6 +80,30 @@ const root = path.resolve(__dirname, '..');
     const report = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
     assert.equal(report.lights.filter(light => !light.group).length, 2);
     assert(report.lights[0].programs.day.points.length > 0);
+    // Hold a write open: no second action or delayed slider preview may pass.
+    await panel.evaluate(el => {
+      el.testResponse = {lights: el.lights.filter(l => !l.group), groups: el.groups};
+      el.testWrites = 0;
+      el._hass.callWS = () => { el.testWrites++; return new Promise((resolve, reject) => { el.finishWrite = resolve; el.failWrite = reject; }); };
+      el.previewLevels = [1, 2, 3, 4, 5, 6];
+      el.previewTimer = setTimeout(() => el.sendLivePreview(), 30);
+      el.testPending = el.send('activate', {item_id: 'day'});
+      el.send('activate', {item_id: 'day'});
+      el.group('group_save', {});
+    });
+    assert(await panel.locator('#transfer-overlay').isVisible());
+    assert(await panel.locator('main').evaluate(el => el.inert && el.getAttribute('aria-busy') === 'true'));
+    await panel.evaluate(el => el.render());
+    assert(await panel.locator('#transfer-overlay').isVisible(), 'Render must preserve the transfer lock');
+    await page.waitForTimeout(80);
+    assert.equal(await panel.evaluate(el => el.testWrites), 1);
+    await panel.evaluate(async el => { el.finishWrite(el.testResponse); await el.testPending; });
+    assert.equal(await panel.locator('#transfer-overlay').count(), 0);
+    assert.equal(await panel.locator('main').evaluate(el => el.inert), false);
+    await panel.evaluate(el => { el.testPending = el.send('activate', {item_id: 'day'}); });
+    await panel.evaluate(async el => { el.failWrite(new Error('Simulierter Übertragungsfehler')); await el.testPending; });
+    assert.equal(await panel.locator('#transfer-overlay').count(), 0);
+    assert((await panel.locator('#notice').textContent()).includes('Simulierter Übertragungsfehler'));
     console.log('PASS: global program intensity, point duplication, 320–1440px layout, editors, groups, no JS errors. Screenshots: ' + screenshotDir);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

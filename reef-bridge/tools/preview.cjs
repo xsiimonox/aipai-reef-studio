@@ -74,13 +74,16 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('#manual').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.scene?.manual===true);
   assert.equal(await ui.locator('[data-level][type=range]').count(),8);
   await ui.locator('[data-action=resume]').click();await ui.locator('#library').selectOption('blue');await ui.locator('#duration').fill('12');await ui.locator('#activate').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='activate'&&c.body.duration===12&&c.body.serial==='group:group1'));
   await ui.locator('#new').click();assert(await ui.locator('#save').isVisible());
   await ui.locator('#name').fill('Gruppe · UV und Warm White');await ui.locator('[data-level="6"][type=number]').fill('71');await ui.locator('[data-level="7"][type=number]').fill('83');await ui.locator('#save').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='save'&&c.body.serial==='group:group1'&&c.body.item.levels?.[6]===71&&c.body.item.levels?.[7]===83));
   await ui.locator('[data-tab=programs]').click();await ui.locator('#new').click();
   assert.equal(await ui.locator('[data-level][type=range]').count(),8);
   await ui.locator('#name').fill('Gruppe · Achtkanal-Tag');await ui.locator('[data-level="6"][type=number]').fill('65');await ui.locator('#save').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='save'&&c.body.serial==='group:group1'&&c.body.item.points?.[0].levels[6]===65));
   // Native countdown continues between network polls.
   const before=await ui.evaluate(el=>{el.testDeadline=Date.now()/1000+60;return el.secondsUntil(el.testDeadline,el.light);});await page.waitForTimeout(1100);const after=await ui.evaluate(el=>el.secondsUntil(el.testDeadline,el.light));assert(after<before,'Countdown must tick between polls');

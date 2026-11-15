@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.24.1";
+const REEF_STUDIO_VERSION = "0.25.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -20,6 +20,12 @@ function interpolate(points, minute) {
 }
 
 const STYLE = `
+  .transfer-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:#07101bd9;backdrop-filter:blur(6px)}
+  .transfer-card{width:min(100%,380px);padding:28px;border:1px solid #496176;border-radius:24px;background:#172433;text-align:center;box-shadow:0 24px 80px #0006}
+  .transfer-spinner{width:36px;height:36px;margin:0 auto 18px;border:3px solid #395064;border-top-color:#a0e7df;border-radius:50%;animation:transfer-spin .85s linear infinite}
+  .transfer-card p{margin-top:8px;color:#b8c8d9}.transfer-card:focus{outline:2px solid #a0e7df}
+  @keyframes transfer-spin{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.transfer-spinner{animation:none}}
   :host{display:block;color:#edf5ff;font:400 15px/1.45 system-ui,sans-serif}
   *{box-sizing:border-box} h1,h2,p{margin:0} h1{font-size:clamp(2rem,6vw,3.6rem);letter-spacing:-.07em;line-height:1}
   h2{font-size:1.12rem;letter-spacing:-.02em} small,.muted{color:#a5b7cb} small{font-size:.82rem}
@@ -153,6 +159,7 @@ class ReefStudioPanel extends HTMLElement {
   }
 
   queueLivePreview(levels) {
+    if (this.busy) return;
     const light = this.light;
     if (!light || light.group || !light.local || !light.online) return;
     // A shared eight-channel MAX profile may be edited from a six-channel
@@ -164,28 +171,10 @@ class ReefStudioPanel extends HTMLElement {
   }
 
   async sendLivePreview() {
-    if (this.previewRequest) {
-      this.previewQueued = true;
-      return;
-    }
+    if (this.busy) return;
     const levels = this.previewLevels;
     if (!levels) return;
-    this.previewRequest = true;
-    try {
-      const data = await this._hass.callWS({
-        type: "aipai_light/studio", action: "preview", serial: this.serial, levels,
-        preview_seconds: this.previewSeconds,
-      });
-      if (this.isConnected) this.receive(data);
-    } catch (error) {
-      this.status(error.message || "Live-Vorschau konnte nicht gesendet werden.");
-    } finally {
-      this.previewRequest = false;
-      if (this.previewQueued || this.previewLevels !== levels) {
-        this.previewQueued = false;
-        this.sendLivePreview();
-      }
-    }
+    await this.send("preview", {levels, preview_seconds: this.previewSeconds});
   }
 
   async refresh() {
@@ -245,9 +234,34 @@ class ReefStudioPanel extends HTMLElement {
     if (node) node.textContent = message;
   }
 
+  setBusy(value) {
+    if (value) {
+      this.transferFocus = this.$.activeElement;
+      clearTimeout(this.previewTimer);
+      this.previewLevels = null;
+    }
+    this.busy = value;
+    this.syncBusy();
+    if (!value && this.transferFocus?.isConnected) this.transferFocus.focus();
+  }
+
+  syncBusy() {
+    const main = this.$.querySelector("main");
+    if (main) { main.inert = !!this.busy; main.setAttribute("aria-busy", String(!!this.busy)); }
+    let overlay = this.$.querySelector("#transfer-overlay");
+    if (!this.busy) { overlay?.remove(); return; }
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "transfer-overlay"; overlay.className = "transfer-overlay";
+      overlay.innerHTML = `<div class="transfer-card" role="status" aria-live="polite" tabindex="-1"><div class="transfer-spinner" aria-hidden="true"></div><h2>Daten werden übertragen …</h2><p>Bitte warten, bis die Übertragung abgeschlossen ist.</p></div>`;
+      this.$.append(overlay);
+      overlay.firstElementChild.focus();
+    }
+  }
+
   async send(action, extra = {}) {
     if (this.busy) return;
-    this.busy = true;
+    this.setBusy(true);
     this.update();
     this.status("Wird verarbeitet …");
     try {
@@ -261,21 +275,21 @@ class ReefStudioPanel extends HTMLElement {
     } catch (error) {
       this.status(error.message || "Der Befehl konnte nicht ausgeführt werden.");
     } finally {
-      this.busy = false;
+      this.setBusy(false);
       this.update();
     }
   }
 
   async group(action, extra = {}) {
     if (this.busy) return;
-    this.busy = true;
+    this.setBusy(true);
     this.status("Wird verarbeitet …");
     try {
       const data = await this._hass.callWS({ type: "aipai_light/studio", action, ...extra });
       this.receive(data);
       this.status("");
     } catch (error) { this.status(error.message || "Die Gruppe konnte nicht gespeichert werden."); }
-    finally { this.busy = false; this.update(); }
+    finally { this.setBusy(false); this.update(); }
   }
 
   render() {
@@ -310,6 +324,7 @@ class ReefStudioPanel extends HTMLElement {
       '<section class="panel empty">Sobald eine AIPAI-Lampe eingerichtet ist, erscheint sie hier.</section>'}
       </div></main>`;
     this.$.querySelector("ha-menu-button").hass = this._hass;
+    this.syncBusy();
     if (!light) return;
     this.$.querySelector("#lamp").onchange = event => {
       this.serial = event.target.value;
