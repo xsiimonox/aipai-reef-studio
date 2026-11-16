@@ -29,7 +29,7 @@ Firmware **0.10.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesp
 Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**. ESP8266/NodeMCU/D1 mini und ESP32-C3/S2/S3 werden vom bereitgestellten Abbild nicht unterstützt. Keine Pins an die Lampe anschließen; Bridge und Lampen sprechen über das 2,4-GHz-WLAN.
 
 1. [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) in Chrome oder Edge auf Windows/macOS öffnen und den ESP32 mit einem USB-Datenkabel verbinden. Safari/Firefox unterstützen Web Serial nicht. Bei Bedarf CP210x-/CH340-Treiber installieren und BOOT beim Verbinden gedrückt halten.
-2. Firmware installieren. Vor einem Update Backup herunterladen; „Erase device“ löscht auch WLAN und Einstellungen.
+2. Firmware installieren. Vor einem Update Backup herunterladen und **„Erase device“ nicht aktivieren**; der Browser-Installer erhält dann WLAN und AiPai-Studio-Daten. „Erase device“ nur für eine vollständige Neuinstallation verwenden.
 3. Mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
 4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.8.1** aufrufen. Kein API-Token nötig.
 5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Die neue Bridge-IP im Router öffnen; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.

@@ -26,6 +26,12 @@ jobs:
       - run: pip install platformio==6.1.18 esptool==4.8.1
       - run: python tools/validate_studio_sync.py
       - run: pio run -d reef-bridge
+      - name: Prepare settings-preserving web installer
+        run: |
+          cp reef-bridge/.pio/build/esp32dev/bootloader.bin reef-bridge/installer/bootloader.bin
+          cp reef-bridge/.pio/build/esp32dev/partitions.bin reef-bridge/installer/partitions.bin
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin reef-bridge/installer/boot_app0.bin
+          cp reef-bridge/.pio/build/esp32dev/firmware.bin reef-bridge/installer/app.bin
       - name: Assemble factory firmware
         run: |
           python -m esptool --chip esp32 merge_bin -o reef-bridge/installer/firmware.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 reef-bridge/.pio/build/esp32dev/bootloader.bin 0x8000 reef-bridge/.pio/build/esp32dev/partitions.bin 0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin 0x10000 reef-bridge/.pio/build/esp32dev/firmware.bin

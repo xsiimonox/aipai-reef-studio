@@ -5,6 +5,7 @@
 - Geführte Übernahme einer fabrikneuen AIPAI-Lampe direkt im Bridge-Webinterface: Lampen-Hotspot suchen, optionales Hotspot-Passwort eingeben, gespeichertes Heim-WLAN übertragen sowie IP und Seriennummer automatisch übernehmen.
 - Vor der WLAN-Übertragung prüft die Bridge die bestätigte Lampen-Gateway-Adresse und eine plausible lokale AIPAI-Konfiguration. Das Lampen-Hotspot-Passwort bleibt flüchtig und wird nicht gespeichert oder protokolliert.
 - Das Bridge-Setup verwendet jetzt `192.168.8.1`, damit es während der Übernahme nicht mit dem AIPAI-Lampen-Hotspot auf `192.168.4.1` kollidiert. Der Einrichtungsmodus endet automatisch nach zehn Minuten.
+- Der Browser-Installer schreibt Updates in getrennte ESP32-Bereiche und erhält bei deaktiviertem „Erase device“ WLAN und AiPai-Studio-Daten. Das zusammengeführte Factory-Abbild bleibt für Terminal-Neuinstallationen verfügbar.
 
 ## [0.9.0] - 2026-11-16
 
