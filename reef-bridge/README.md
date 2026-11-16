@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.4.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; der Betrieb mit mehreren echten Lampen benötigt noch einen Hardware-Dauertest.
+Firmware **0.10.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; die fabrikneue Lampenübernahme und der Betrieb mit mehreren echten Lampen benötigen noch einen Hardwaretest.
 
 ![AiPai Studio auf der Bridge](docs/bridge-desktop.png)
 
@@ -31,10 +31,23 @@ Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**.
 1. [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) in Chrome oder Edge auf Windows/macOS öffnen und den ESP32 mit einem USB-Datenkabel verbinden. Safari/Firefox unterstützen Web Serial nicht. Bei Bedarf CP210x-/CH340-Treiber installieren und BOOT beim Verbinden gedrückt halten.
 2. Firmware installieren. Vor einem Update Backup herunterladen; „Erase device“ löscht auch WLAN und Einstellungen.
 3. Mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
-4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.4.1** aufrufen. Kein API-Token nötig.
+4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.8.1** aufrufen. Kein API-Token nötig.
 5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Die neue Bridge-IP im Router öffnen; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
 6. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
 7. Tagesprogramm grafisch erstellen, speichern und mit „Auf Lampe speichern & aktivieren“ für eine Lampe oder Gruppe übertragen. Dafür benötigt die Bridge einmalig eine gültige Netzwerkzeit. Vor Betrieb die Stundenkurve und gewünschten Kanalwerte prüfen.
+
+### Fabrikneue Lampe ohne Hersteller-App übernehmen
+
+Die Bridge muss ihr Heim-WLAN bereits kennen. Die Lampe muss sich im Werks-/Access-Point-Modus befinden und ihren eigenen WLAN-Hotspot anzeigen. Die Bridge hält dafür ein zweites, konfliktfreies Einrichtungsnetz auf `192.168.8.1` bereit; der Lampen-Hotspot bleibt auf der vom Hersteller verwendeten Adresse `192.168.4.1`.
+
+1. AiPai Studio unter `http://reefbridge.local` oder über die Bridge-IP öffnen und „Einrichtung“ wählen.
+2. Unter „Fabrikneue Lampe aus Hotspot übernehmen“ auf „Einrichtungs-WLAN starten“ klicken.
+3. Computer oder Smartphone mit dem angezeigten `ReefBridge-…`-WLAN verbinden und `http://192.168.8.1` öffnen. Das Einrichtungsnetz endet nach zehn Minuten automatisch.
+4. „Lampen-Hotspots suchen“ wählen, den AIPAI-Hotspot auswählen und nur falls nötig dessen Passwort eintragen. Lampenname und korrektes 6-/8-Kanal-Profil festlegen.
+5. „WLAN übertragen und Lampe übernehmen“ wählen. Die Bridge prüft zuerst lokal AIPAI-Konfiguration, Modell und Seriennummer. Erst danach sendet sie ihre gespeicherten Heim-WLAN-Daten an die Lampe, liest die neue IP zurück, legt sie in AiPai Studio an und startet sie neu.
+6. Nach der Erfolgsmeldung den Einrichtungsmodus beenden, wieder mit dem Heim-WLAN verbinden und `http://reefbridge.local` öffnen. Im Router anschließend eine feste DHCP-Zuordnung für die neue Lampe setzen.
+
+Das Passwort des Lampen-Hotspots wird nur für diesen Verbindungsversuch im Arbeitsspeicher verwendet. Es erscheint weder im Backup noch im Diagnoseprotokoll. Die Funktion folgt den aus APK 3.1.93 belegten lokalen Befehlen, muss wegen möglicher Firmwarevarianten aber zunächst an einer echten Testlampe bestätigt werden. Bei einem Sicherheits- oder Antwortfehler werden keine weiteren Lampendaten gespeichert.
 
 Beim ersten Start ab 0.2.0 wird eine bestehende 0.1-Konfiguration mitsamt Tagesplan und Szenen automatisch übernommen. Die alte Preferences-Konfiguration bleibt als Wiederherstellungskopie erhalten. Neue Daten werden in LittleFS über eine temporäre Datei gespeichert. Ein Mount-Fehler nach der ersten Initialisierung führt nicht zu automatischem Formatieren.
 
@@ -74,6 +87,10 @@ Der dauerhafte manuelle Modus lehnt HA-Leases mit HTTP 409 ab. Update-Status ste
 | POST `/api/fixture` | `index` (-1 für neu), `name`, `lamp_ip`, `serial`, `channels`, `timezone` |
 | POST `/api/restore` | Vollständiges `workspace`-Backup importieren; alle Overrides beenden |
 | POST `/api/wifi` | `ssid`, `password` |
+| POST `/api/provision/enable` | Zeitlich begrenztes Bridge-Einrichtungs-WLAN auf `192.168.8.1` starten |
+| GET `/api/provision/scan` | WLAN-Hotspots für die lokale Lampenübernahme suchen |
+| POST `/api/provision/start` | Geprüfte AIPAI-Lampe mit `lamp_ssid`, optional `lamp_password`, `name`, `channels`, `timezone` ins Heim-WLAN übernehmen |
+| POST `/api/provision/disable` | Einrichtungs-WLAN beenden |
 | POST `/api/control` | Kompatible erste-Lampe-Aktionen `lease`, `preview`, `manual`, `resume` mit `levels` und `seconds` |
 
 Studio-Beispiel: `{"action":"activate","serial":"SERIENNUMMER","kind":"programs","item_id":"PROFIL_ID"}`. Gruppen verwenden `serial: "group:GRUPPEN_ID"`. Vorschauen erhalten `preview_seconds` (1–3600); Szenen `duration` (1–60 Minuten). Das frühere `/api/config` wird durch `/api/fixture`, `/api/studio` und `/api/restore` ersetzt. Alte Backups können bei der Migration aus der bestehenden 0.1-Installation übernommen werden; der neue Import erwartet das vollständige Workspace-Format.

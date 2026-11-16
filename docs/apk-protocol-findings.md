@@ -49,11 +49,14 @@ Im Access-Point-Modus verwendet die App diese lokalen HTTP-Aufrufe:
    abfragen.
 4. `?node=restart` – Lampe neu starten.
 
-Damit ist eine hersteller-appfreie lokale Einrichtung grundsätzlich möglich.
-Sie wird noch nicht automatisch ausgeführt: Der Rechner oder die Bridge muss
-dazu vorübergehend mit dem Lampen-AP verbunden sein, und die Antwortvarianten
-müssen zuerst an einem Testgerät bestätigt werden. Zugangsdaten dürfen dabei
-nicht protokolliert oder an den Hersteller gesendet werden.
+Reef Bridge 0.10.0 setzt diesen Ablauf als geführte lokale Einrichtung um. Ihr
+eigenes Setup-Netz verwendet dabei `192.168.8.1`, während sich die Bridge als
+WLAN-Client mit der Lampe auf `192.168.4.1` verbindet. Vor der Übertragung prüft
+sie Adresse, Konfigurationsformat, Seriennummer und Modell; anschließend liest
+sie die neue IP und dieselbe Seriennummer zurück. Das Lampen-Hotspot-Passwort
+wird nicht gespeichert oder protokolliert. Weil sich Hersteller-Firmwarestände
+unterscheiden können, bleibt die Funktion experimentell, bis der Ablauf an
+echten Testlampen bestätigt ist.
 
 ## Gruppen und Status
 

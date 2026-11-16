@@ -20,6 +20,7 @@ const int MAX_LAMPS = 4;
 const char* codes[] = {"w","b","r","g","b2","p","uv","wm"};
 const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
 const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
+const IPAddress setupIp(192,168,8,1),setupGateway(192,168,8,1),setupMask(255,255,255,0);
 struct Lamp {
   String mode="firmware", scene, error;
   int indicatorLight=-1; // Last command only; no vendor readback is documented.
@@ -34,9 +35,9 @@ struct Lamp {
   String deviceClock, deviceTimezone, power, observed;
   int openHour=0, closeHour=0;
 } lamps[MAX_LAMPS];
-bool fsReady=false, updateAvailable=false;
-String latestVersion, updateError, apPassword;
-uint32_t lastUpdateCheck=0, lastReconnect=0;
+bool fsReady=false, updateAvailable=false, provisioningAp=false;
+String latestVersion, updateError, apPassword, apSsid;
+uint32_t lastUpdateCheck=0, lastReconnect=0, provisioningApStop=0;
 bool expired(uint32_t deadline) { return int32_t(millis()-deadline)>=0; }
 int count() { return workspace["lamps"].size(); }
 int channels(int i) { return workspace["lamps"][i]["channels"] | 6; }
@@ -50,6 +51,11 @@ void fail(String message,int code=400) {
   DynamicJsonDocument data(512);data["error"]=message;String json;serializeJson(data,json);server.send(code,"application/json",json);
 }
 void ok() { server.send(200,"application/json","{\"ok\":true}"); }
+void startSetupAp(bool provisioning=false) {
+  WiFi.softAPdisconnect(true);delay(100);WiFi.softAPConfig(setupIp,setupGateway,setupMask);
+  WiFi.softAP(apSsid.c_str(),apPassword.c_str());dnsServer.start(53,"*",setupIp);
+  provisioningAp=provisioning;if(provisioning)provisioningApStop=millis()+10UL*60*1000;
+}
 bool body(JsonDocument& doc) {
   if(server.arg("plain").length()>48000 || deserializeJson(doc,server.arg("plain"))){fail("Ungültige oder zu große Daten.");return false;}return true;
 }
@@ -149,7 +155,19 @@ bool lampState(int i,String* fields,int& n) {
   raw=raw.substring(begin);int end=raw.indexOf('"');if(end>=0)raw=raw.substring(0,end);end=raw.indexOf('\'');if(end>=0)raw=raw.substring(0,end);
   n=0;int start=0;do{end=raw.indexOf('|',start);if(n>=32)return false;fields[n]=end<0?raw.substring(start):raw.substring(start,end);fields[n++].trim();start=end+1;}while(end>=0);
   int roads=n>28?8:6;
-  if(n<25||fields[21+2*(roads-6)]!=workspace["lamps"][i]["serial"].as<String>()||channels(i)>roads){lamps[i].error="Seriennummer oder Kanalprofil passt nicht; kein Schreibzugriff";return false;}
+  if(n<25){
+    lamps[i].error="Ungültige Lampenantwort ("+String(n)+" Felder); kein Schreibzugriff";
+    return false;
+  }
+  String reportedSerial=fields[21+2*(roads-6)], configuredSerial=workspace["lamps"][i]["serial"].as<String>();
+  if(reportedSerial!=configuredSerial){
+    lamps[i].error="Seriennummer passt nicht: erwartet "+configuredSerial+", gemeldet "+reportedSerial+"; kein Schreibzugriff";
+    return false;
+  }
+  if(channels(i)>roads){
+    lamps[i].error="Kanalprofil passt nicht: eingerichtet "+String(channels(i))+", Firmware "+String(roads)+" Kanäle; kein Schreibzugriff";
+    return false;
+  }
   if((fields[0]!="on"&&fields[0]!="off")||(fields[1]!="0"&&fields[1]!="1"))return false;
   Lamp& lamp=lamps[i];lamp.deviceClock=fields[18+2*(roads-6)];lamp.deviceTimezone=fields[23+2*(roads-6)];lamp.power=fields[0];lamp.openHour=fields[19+2*(roads-6)].toInt();lamp.closeHour=fields[20+2*(roads-6)].toInt();
   String observed=fields[0]+"|"+fields[1];for(int k=5;k<5+2*roads;k++)observed+="|"+fields[k];
@@ -281,6 +299,60 @@ bool fwIdentifier(String value){if(!value.length()||value.length()>64)return fal
 bool fwVersion(String value){int dots=0,digits=0;for(size_t j=0;j<value.length();j++){char c=value[j];if(c=='.'){if(!digits||++dots>3)return false;digits=0;}else if(c<'0'||c>'9'||++digits>10)return false;}return digits>0;}
 int fwCompare(String a,String b){for(int part=0;part<4;part++){int ea=a.indexOf('.'),eb=b.indexOf('.');String x=ea<0?a:a.substring(0,ea),y=eb<0?b:b.substring(0,eb);uint64_t vx=strtoull(x.c_str(),nullptr,10),vy=strtoull(y.c_str(),nullptr,10);if(vx!=vy)return vx>vy?1:-1;a=ea<0?"":a.substring(ea+1);b=eb<0?"":b.substring(eb+1);}return 0;}
 String fwEncode(String text){String result;const char* hex="0123456789ABCDEF";for(size_t j=0;j<text.length();j++){unsigned char c=text[j];if(isalnum(c)||c=='-'||c=='_')result+=char(c);else{result+='%';result+=hex[c>>4];result+=hex[c&15];}}return result;}
+bool apRequest(IPAddress gateway,String query,String& response,uint16_t timeout=3000){
+  HTTPClient http;http.setConnectTimeout(1500);http.setTimeout(timeout);http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  if(!http.begin("http://"+gateway.toString()+"/?"+query))return false;
+  int code=http.GET(),length=http.getSize();if(code==200&&(length<0||length<=4096))response=http.getString();http.end();
+  return code==200&&response.length()<=4096;
+}
+bool factoryIdentity(String raw,String& serial,String& model,int& roads){
+  int begin=raw.indexOf("on|"),off=raw.indexOf("off|");if(off>=0&&(begin<0||off<begin))begin=off;
+  if(begin<0)return false;raw=raw.substring(begin);int quote=raw.indexOf('"');if(quote>=0)raw=raw.substring(0,quote);quote=raw.indexOf('\'');if(quote>=0)raw=raw.substring(0,quote);
+  String fields[32];int n=0,start=0,end;
+  do{end=raw.indexOf('|',start);if(n>=32)return false;fields[n]=end<0?raw.substring(start):raw.substring(start,end);fields[n++].trim();start=end+1;}while(end>=0);
+  roads=n>28?8:6;int d2=2*(roads-6);if(n<25+d2)return false;serial=fields[21+d2];model=fields[24+d2];
+  return fwIdentifier(serial)&&fwIdentifier(model);
+}
+void reconnectHome(){
+  String homeSsid=prefs.getString("ssid",""),homePass=prefs.getString("wifi_pass","");
+  WiFi.disconnect(false,false);if(homeSsid.length())WiFi.begin(homeSsid.c_str(),homePass.c_str());
+}
+void provisionLamp(JsonDocument& msg){
+  String lampSsid=msg["lamp_ssid"]|"",lampPass=msg["lamp_password"]|"",name=msg["name"]|"",zone=msg["timezone"]|defaultZone;
+  int requestedChannels=msg["channels"]|0;String homeSsid=prefs.getString("ssid",""),homePass=prefs.getString("wifi_pass","");
+  auto abortProvision=[&](String message){reconnectHome();fail(message);};
+  if(!provisioningAp){fail("Bitte zuerst das Einrichtungs-WLAN der Reef Bridge starten.",409);return;}
+  if(!homeSsid.length()){fail("Bitte zuerst das Heim-WLAN der Reef Bridge speichern.",409);return;}
+  if(count()>=MAX_LAMPS||!validName(msg["name"])||!lampSsid.length()||lampSsid.length()>32||
+     (lampPass.length()&&lampPass.length()<8)||lampPass.length()>63||(requestedChannels!=6&&requestedChannels!=8)||!zone.length()||zone.length()>96){
+    fail("Bitte Lampen-Hotspot, Name, Kanalzahl und Zeitzone prüfen.");return;
+  }
+  WiFi.disconnect(false,false);delay(150);WiFi.begin(lampSsid.c_str(),lampPass.c_str());
+  uint32_t deadline=millis()+20000;while(WiFi.status()!=WL_CONNECTED&&!expired(deadline))delay(100);
+  if(WiFi.status()!=WL_CONNECTED){abortProvision("Der ausgewählte Lampen-Hotspot konnte nicht verbunden werden.");return;}
+  IPAddress gateway=WiFi.gatewayIP();if(gateway!=IPAddress(192,168,4,1)){abortProvision("Sicherheitsabbruch: Der Lampen-Hotspot verwendet nicht die bestätigte Adresse 192.168.4.1.");return;}
+  String raw,serial,model;int firmwareRoads=0;
+  if(!apRequest(gateway,"read=config",raw)||!factoryIdentity(raw,serial,model,firmwareRoads)){
+    abortProvision("Sicherheitsabbruch: Der Hotspot antwortet nicht mit einer gültigen AIPAI-Lampenidentität.");return;
+  }
+  if(requestedChannels>firmwareRoads){abortProvision("Das gewählte Kanalprofil passt nicht zur erkannten Lampen-Firmware.");return;}
+  String reply,connectQuery="sta=apconnect&ssid="+fwEncode(homeSsid)+"&pwd="+fwEncode(homePass)+"&callback=1";
+  if(!apRequest(gateway,connectQuery,reply,5000)){abortProvision("Die WLAN-Daten wurden von der Lampe nicht angenommen.");return;}
+  String networkInfo;for(int attempt=0;attempt<5&&!networkInfo.length();attempt++){
+    delay(3000);String candidate;if(apRequest(gateway,"sta=getip&callback=1",candidate,5000)&&candidate!="false")networkInfo=candidate;
+  }
+  int first=networkInfo.indexOf(','),second=networkInfo.indexOf(',',first+1);String ipText=first>0?networkInfo.substring(0,first):"";
+  String reportedSerial=second>first?networkInfo.substring(first+1,second):"",activation=second>first?networkInfo.substring(second+1):"";
+  ipText.trim();reportedSerial.trim();activation.trim();IPAddress lampIp;
+  if(!lampIp.fromString(ipText)||lampIp==gateway||reportedSerial!=serial){abortProvision("Die Lampe hat nach der WLAN-Übertragung keine bestätigte IP und Seriennummer geliefert.");return;}
+  DynamicJsonDocument next(65536);next.set(workspace);JsonObject fixture=next["lamps"].createNestedObject();fallbackPoints(fixture);
+  fixture["name"]=name;fixture["serial"]=serial;fixture["lamp_ip"]=ipText;fixture["channels"]=requestedChannels;fixture["timezone"]=zone;
+  if(!validWorkspace(next)){abortProvision("Die erkannte Lampe kann nicht sicher in die Bridge-Konfiguration übernommen werden.");return;}
+  apRequest(gateway,"node=restart",reply,1500);reconnectHome();
+  if(!persist(next))return;lamps[count()-1]=Lamp();
+  DynamicJsonDocument result(512);result["ok"]=true;result["serial"]=serial;result["model"]=model;result["lamp_ip"]=ipText;result["activation"]=activation;
+  String json;serializeJson(result,json);server.send(200,"application/json",json);
+}
 class FirmwareBuffer:public Stream{
  public:String data;bool overflow=false;
  int available()override{return 0;}int read()override{return -1;}int peek()override{return -1;}void flush()override{}
@@ -308,6 +380,7 @@ void checkLampFirmware(int i,bool batch=false){
 void status() {
   DynamicJsonDocument doc(56000);
   doc["version"]=BRIDGE_VERSION;doc["now_epoch"]=double(time(nullptr));doc["clock_valid"]=time(nullptr)>=1700000000;doc["ip"]=WiFi.localIP().toString();
+  JsonObject provision=doc.createNestedObject("provision");provision["active"]=provisioningAp;provision["ssid"]=apSsid;provision["url"]="http://192.168.8.1";provision["home_configured"]=prefs.getString("ssid","").length()>0;
   JsonObject update=doc.createNestedObject("update");update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;
   JsonArray lights=doc.createNestedArray("lights");
   for(int i=0;i<count();i++){
@@ -429,19 +502,30 @@ void checkUpdate() {
   if(sscanf(remote.c_str(),"%d.%d.%d",&a,&b,&c)!=3||sscanf(BRIDGE_VERSION,"%d.%d.%d",&x,&y,&z)!=3)return;
   latestVersion=remote;updateAvailable=a>x||(a==x&&(b>y||(b==y&&c>z)));updateError="";
 }
-void portal(){server.sendHeader("Location","http://192.168.4.1/",true);server.send(302,"text/plain","");}
+void portal(){server.sendHeader("Location","http://192.168.8.1/",true);server.send(302,"text/plain","");}
 void setup() {
   Serial.begin(115200);prefs.begin("reefbridge",false);fsReady=LittleFS.begin(false);
   // Initialize only on first use; a later mount failure must retain the data.
   if(!fsReady&&!prefs.getBool("studio_fs",false)){Serial.println("Initializing Studio filesystem");fsReady=LittleFS.begin(true);}
   if(fsReady)prefs.putBool("studio_fs",true);
-  loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");
-  WiFi.mode(WIFI_AP_STA);String ssid="ReefBridge-"+String((uint32_t)ESP.getEfuseMac(),HEX);WiFi.softAP(ssid.c_str(),apPassword.c_str());dnsServer.start(53,"*",WiFi.softAPIP());
+  loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");apSsid="ReefBridge-"+String((uint32_t)ESP.getEfuseMac(),HEX);
+  WiFi.mode(WIFI_AP_STA);startSetupAp(false);
   WiFi.begin(prefs.getString("ssid","").c_str(),prefs.getString("wifi_pass","").c_str());configTime(0,0,"pool.ntp.org","time.cloudflare.com");
-  Serial.println("Setup: http://192.168.4.1 | AP password: "+apPassword);
+  Serial.println("Setup: http://192.168.8.1 | AP password: "+apPassword);
   server.on("/",HTTP_GET,[]{server.send_P(200,"text/html; charset=utf-8",(const char*)WEB_UI,sizeof(WEB_UI));});
   for(const char* probe:{"/generate_204","/hotspot-detect.html","/connecttest.txt"})server.on(probe,HTTP_GET,portal);
   server.on("/api/status",HTTP_GET,status);
+  server.on("/api/provision/enable",HTTP_POST,[]{
+    startSetupAp(true);DynamicJsonDocument result(384);result["ok"]=true;result["ssid"]=apSsid;result["password"]=apPassword;result["url"]="http://192.168.8.1";
+    String json;serializeJson(result,json);server.send(200,"application/json",json);
+  });
+  server.on("/api/provision/scan",HTTP_GET,[]{
+    int found=WiFi.scanNetworks(false,true);DynamicJsonDocument result(4096);JsonArray networks=result.createNestedArray("networks");
+    for(int i=0;i<found&&networks.size()<24;i++){String ssid=WiFi.SSID(i);if(!ssid.length()||ssid==apSsid)continue;JsonObject network=networks.createNestedObject();network["ssid"]=ssid;network["rssi"]=WiFi.RSSI(i);network["open"]=WiFi.encryptionType(i)==WIFI_AUTH_OPEN;}
+    WiFi.scanDelete();String json;serializeJson(result,json);server.send(200,"application/json",json);
+  });
+  server.on("/api/provision/start",HTTP_POST,[]{DynamicJsonDocument msg(2048);if(body(msg))provisionLamp(msg);});
+  server.on("/api/provision/disable",HTTP_POST,[]{ok();provisioningApStop=millis()+1500;});
   server.on("/api/studio",HTTP_POST,[]{DynamicJsonDocument msg(16000);if(body(msg))studio(msg);});
   server.on("/api/fixture",HTTP_POST,[]{
     DynamicJsonDocument msg(2048);if(!body(msg))return;int index=msg["index"]|-1;
@@ -469,8 +553,9 @@ void setup() {
 }
 void loop() {
   dnsServer.processNextRequest();server.handleClient();
-  if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nIP: "+WiFi.localIP().toString());}
-  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");dnsServer.stop();WiFi.softAPdisconnect(true);started=true;}
+  if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
+  if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");}
+  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");if(!provisioningAp){dnsServer.stop();WiFi.softAPdisconnect(true);}started=true;}
     // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
     // between fixtures; each fixture has independent mode, timers and clock.
     static int cursor=0;for(int n=0;n<count();n++){int i=(cursor+n)%count();expire(i);if(lamps[i].force||millis()-lamps[i].lastOutput>=30000){lamps[i].force=false;lamps[i].lastOutput=millis();output(i);cursor=(i+1)%count();break;}}

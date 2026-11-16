@@ -9,14 +9,19 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    .replace('/* BRIDGE_ADAPTER */',()=>fs.readFileSync(path.join(root,'web/bridge-adapter.js'),'utf8'));
  const points=[0,540,660,1080,1200].map((minute,i)=>({minute,levels:[25,70,3,2,85,12,5,15].map(v=>i===2||i===3?v:0)}));
  const workspace={schema:1,lamps:[],programs:{day:{name:'Riff · Tageslicht',points}},scenes:{blue:{name:'Blaulicht',levels:[0,40,0,0,80,10,0,0]}},groups:{}};
- const calls=[],runtime=[];let state;
- const reset=()=>{state={version:firmware,workspace,now_epoch:Date.now()/1000,update:{available:false,latest:firmware},lights:runtime};};reset();
+ const calls=[],runtime=[];let state;const provision={active:false,ssid:'ReefBridge-DEMO',url:'http://192.168.8.1',home_configured:true};
+ const reset=()=>{state={version:firmware,workspace,now_epoch:Date.now()/1000,update:{available:false,latest:firmware},provision,lights:runtime};};reset();
  const browser=await chromium.launch({headless:true});
  try{
   const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('http://bridge.test/**',async route=>{
    const url=new URL(route.request().url());if(url.pathname==='/'){await route.fulfill({contentType:'text/html; charset=utf-8',body:html});return;}
-   const msg=route.request().postDataJSON();if(msg){await new Promise(resolve=>setTimeout(resolve,50));calls.push({path:url.pathname,body:msg});
+   if(url.pathname==='/api/provision/scan'){calls.push({path:url.pathname,body:{}});await route.fulfill({json:{networks:[{ssid:'A8SE-FACTORY',rssi:-42,open:true}]}});return;}
+   const msg=route.request().postDataJSON();
+   if(url.pathname==='/api/provision/enable'){provision.active=true;calls.push({path:url.pathname,body:msg});reset();await route.fulfill({json:{ok:true,ssid:provision.ssid,password:'ReefBridge2026!',url:provision.url}});return;}
+   if(url.pathname==='/api/provision/start'){await new Promise(resolve=>setTimeout(resolve,50));calls.push({path:url.pathname,body:msg});workspace.lamps.push({name:msg.name,serial:'FACTORY8',lamp_ip:'192.0.2.21',channels:msg.channels,timezone:msg.timezone,points,program:'day'});runtime.push({program:'day',program_execution:'hold',startup_hold:true,mode:'firmware',scene:null,preview:null,online:true,minute:780,temperature:37.2,log:[]});reset();await route.fulfill({json:{ok:true,serial:'FACTORY8',model:'A8SE8',lamp_ip:'192.0.2.21',activation:'true'}});return;}
+   if(url.pathname==='/api/provision/disable'){provision.active=false;calls.push({path:url.pathname,body:msg});reset();await route.fulfill({json:{ok:true}});return;}
+   if(msg){await new Promise(resolve=>setTimeout(resolve,50));calls.push({path:url.pathname,body:msg});
     if(url.pathname==='/api/fixture'){
      workspace.lamps.push({...msg,points,program:'day'});runtime.push({program:'day',program_execution:'hold',startup_hold:true,mode:'firmware',scene:null,preview:null,online:true,minute:780,temperature:38.5,log:[]});
     }
@@ -64,8 +69,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('#library').selectOption('day');await ui.locator('[data-point="2"]').click();
   for(const width of [1440,1024,768,390,320]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow at '+width);assert.deepEqual(await ui.evaluate(el=>[...el.shadowRoot.querySelectorAll('button,input,select,.panel')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>n.id||n.className)),[],'control overflow at '+width);if(width===1440||width===390)await page.screenshot({path:path.join(screenshotDir,'bridge-'+width+'.png'),fullPage:true});}
   await page.setViewportSize({width:1440,height:1000});
-  await ui.getByRole('button',{name:'Einrichtung',exact:true}).click();await page.screenshot({path:path.join(screenshotDir,'setup.png'),fullPage:true});await ui.locator('#add-lamp').click();
-  await ui.locator('#device-name').fill('Riff · MAX Pro');await ui.locator('#device-ip').fill('192.0.2.21');await ui.locator('#device-serial').fill('DEMO8');await ui.locator('#device-count').selectOption('8');await ui.locator('#store-device').click();
+  await ui.getByRole('button',{name:'Einrichtung',exact:true}).click();await page.screenshot({path:path.join(screenshotDir,'setup.png'),fullPage:true});
+  await ui.locator('#enable-provision').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel')._hass.state.provision.active===true);
+  assert((await ui.locator('#bridge-settings').textContent()).includes('192.168.8.1'));
+  await ui.locator('#scan-lamp-hotspots').click();await ui.locator('#lamp-hotspot').selectOption('A8SE-FACTORY');
+  await ui.locator('#provision-name').fill('Riff · MAX Pro');await ui.locator('#provision-channels').selectOption('8');await ui.locator('#provision-lamp').click();
+  await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').lights.length===2);
+  assert(calls.some(c=>c.path==='/api/provision/start'&&c.body.lamp_ssid==='A8SE-FACTORY'&&c.body.channels===8));
+  assert((await ui.locator('#bridge-settings').textContent()).includes('FACTORY8'));
   await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').lights.length===2);
   await ui.locator('[data-tab=groups]').click();await ui.locator('#new-group').click();await ui.locator('#group-name').fill('Hauptbecken');
   for(const box of await ui.locator('[type=checkbox]').all())await box.check();await ui.locator('#save-group').click();
