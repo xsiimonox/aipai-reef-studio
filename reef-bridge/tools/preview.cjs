@@ -92,5 +92,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   // Native countdown continues between network polls.
   const before=await ui.evaluate(el=>{el.testDeadline=Date.now()/1000+60;return el.secondsUntil(el.testDeadline,el.light);});await page.waitForTimeout(1100);const after=await ui.evaluate(el=>el.secondsUntil(el.testDeadline,el.light));assert(after<before,'Countdown must tick between polls');
   assert.deepEqual(errors,[]);console.log('PASS: global intensity, point copy, onboarding, 6/8 channels, shared library, mixed groups, responsive 320–1440px; no JS errors. '+screenshotDir);
+  await ui.locator('[data-indicator="false"]').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
+  assert(calls.some(c=>c.body.action==='indicator'&&c.body.enabled===false&&c.body.serial==='group:group1'));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

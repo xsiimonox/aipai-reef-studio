@@ -22,6 +22,7 @@ const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
 const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 struct Lamp {
   String mode="firmware", scene, error;
+  int indicatorLight=-1; // Last command only; no vendor readback is documented.
   int levels[8]={}, sent[8]={}, previewLevels[8]={};
   uint32_t until=0, previewEnd=0, lastOutput=0, lastClockSync=0;
   bool online=false, force=true, releaseRequested=false;
@@ -282,6 +283,7 @@ void status() {
     expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
     state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
     state["power"]=lamp.power;state["device_clock"]=lamp.deviceClock;state["device_timezone"]=lamp.deviceTimezone;state["open_hour"]=lamp.openHour;state["close_hour"]=lamp.closeHour;
+    if(lamp.indicatorLight<0)state["indicator_light"]=nullptr;else state["indicator_light"]=lamp.indicatorLight==1;
     String program=workspace["lamps"][i]["program"]|"",execution=workspace["lamps"][i]["program_execution"]|"hold";
     if(program.length())state["program"]=program;state["program_execution"]=execution;state["startup_hold"]=program.length()&&execution!="device";
     if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
@@ -332,6 +334,16 @@ void studio(JsonDocument& msg) {
     }return;
   }
   if(!targetCount){fail("Lampe nicht gefunden");return;}
+  if(action=="indicator"){
+    if(!msg["enabled"].is<bool>()){fail("Tastenbeleuchtung erwartet Ein oder Aus");return;}
+    for(int i=0;i<count();i++)if(targets[i]){
+      String fields[32],reply;int n;
+      if(!lampState(i,fields,n)){fail("Lampenidentität für Tastenbeleuchtung nicht bestätigt");return;}
+      bool enabled=msg["enabled"].as<bool>();
+      if(!fetch(i,enabled?"mculed=on":"mculed=off",reply)){logEvent(i,"Tastenbeleuchtung fehlgeschlagen");fail(lamps[i].error);return;}
+      lamps[i].indicatorLight=enabled?1:0;logEvent(i,enabled?"Tastenbeleuchtung Ein gesendet":"Tastenbeleuchtung Aus gesendet");
+    }ok();return;
+  }
   if(action=="activate"||action=="manual"){
     if(!workspace[kind].containsKey(id)||(action=="manual"&&kind!="scenes")){fail("Bitte ein gespeichertes Profil wählen");return;}
     int minutes=msg["duration"]|15;if(minutes<1||minutes>60){fail("Dauer: 1–60 Minuten");return;}

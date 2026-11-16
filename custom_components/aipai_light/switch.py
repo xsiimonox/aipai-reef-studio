@@ -32,12 +32,43 @@ async def async_setup_entry(
 ) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
     if isinstance(hub, AipaiLightHub):
+        if hub.local:
+            async_add_entities([AipaiIndicatorSwitch(hub)])
         return  # AiPai Studio replaces the legacy light switches.
     from .experimental import ExperimentalDeviceHub
     from .experimental_entities import build_entities
 
     if isinstance(hub, ExperimentalDeviceHub):
         async_add_entities(build_entities(hub, "switch"))
+
+
+class AipaiIndicatorSwitch(SwitchEntity):
+    """PilotLamp; optimistic because firmware has no documented LED readback."""
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_name = "Tastenbeleuchtung"
+    _attr_icon = "mdi:led-on"
+    _attr_assumed_state = True
+
+    def __init__(self, hub: AipaiLightHub) -> None:
+        self._hub = hub
+        self._attr_unique_id = f"{hub.serial}_indicator_light"
+        self._attr_device_info = hub.device_info
+        hub.register_entity(self)
+
+    @property
+    def available(self) -> bool:
+        return self._hub.local and self._hub.available
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._hub.indicator_light
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._hub.async_set_indicator_light(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._hub.async_set_indicator_light(False)
 
 
 class AipaiMasterSwitch(SwitchEntity):

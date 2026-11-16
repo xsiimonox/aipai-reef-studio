@@ -71,6 +71,13 @@ const root = path.resolve(__dirname, '..');
     await page.screenshot({ path: path.join(screenshotDir, 'groups.png'), fullPage: true });
     await page.setViewportSize({ width: 320, height: 900 });
     assert(await panel.locator('#save-group').evaluate(el => el.getBoundingClientRect().right <= innerWidth));
+    await panel.evaluate(el => {
+      el.indicatorCalls = [];
+      el._hass.callWS = async msg => {el.indicatorCalls.push(msg);return {lights: el.lights.filter(l => !l.group), groups: el.groups};};
+    });
+    await panel.locator('[data-indicator="false"]').click();
+    await page.waitForFunction(()=>!document.querySelector('aipai-reef-studio').busy);
+    assert(await panel.evaluate(el => el.indicatorCalls.some(msg => msg.action === 'indicator' && msg.enabled === false && msg.serial === 'group:demo' && msg.kind === 'programs')));
     assert.deepEqual(errors, []);
     await panel.locator('[data-tab=diagnostics]').click();
     const downloadPromise = page.waitForEvent('download');

@@ -298,6 +298,7 @@ class ReefStudio:
             "now_epoch": dt_util.utcnow().timestamp(),
             "mode": state.mode,
             "device_clock": state.clock,
+            "indicator_light": self.hub.indicator_light,
             "device_timezone": state.timezone,
             "open_hour": state.open_hour,
             "close_hour": state.close_hour,
@@ -501,6 +502,11 @@ class ReefStudio:
             if self.closed:
                 raise ValueError("Die Integration wird gerade neu geladen.")
             action = msg["action"]
+            if action == "indicator":
+                if type(msg.get("enabled")) is not bool:
+                    raise ValueError("Bitte Ein oder Aus für die Tastenbeleuchtung angeben.")
+                await self.hub.async_set_indicator_light(msg["enabled"])
+                return
             kind = msg.get("kind", "programs")
             item_id = msg.get("item_id")
             if self.library is None:
@@ -631,7 +637,7 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete",
+        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),
@@ -642,6 +648,7 @@ def register_studio_api(hass) -> None:
     vol.Optional("levels"): [int],
     vol.Optional("name"): str,
     vol.Optional("serials"): [str],
+    vol.Optional("enabled"): bool,
 })
 @websocket_api.async_response
 async def studio_command(hass, connection, msg) -> None:

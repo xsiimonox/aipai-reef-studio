@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.7.0] - 2026-11-16
+
+- PilotLamp/Tastenbeleuchtung lokal im gemeinsamen Studio ein-/ausschalten, auch für Lampengruppen. Lampenidentität wird vor dem dedizierten `mculed`-Befehl geprüft. Keine Änderung am Lichtprofil; Status zeigt nur die letzte gesendete Einstellung.
+
 ## [0.6.0] - 2026-11-15
 
 - Gemeinsame Studio-Ladeanimation und Eingabesperre für Lampenbefehle, Gruppen und Live-Vorschauen. Auch Einrichtung, WLAN-Speicherung und Backup-Import sperren weitere Aktionen bis zur Antwort.

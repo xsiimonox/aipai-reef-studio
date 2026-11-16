@@ -17,6 +17,12 @@ LABELS = ["White", "Blue", "Red", "Green", "Royal Blue", "Purple", "UV", "Warm W
 
 
 class MixedGroupTests(unittest.IsolatedAsyncioTestCase):
+    async def test_indicator_targets_each_fixture_without_changing_channels(self):
+        group, studios = self.setup_group([6, 8])
+        await group.command("reef", {"action": "indicator", "enabled": False})
+        for studio in studios.values():
+            self.assertEqual(studio.command.call_args.args[0], {"action": "indicator", "enabled": False})
+
     def setup_group(self, counts):
         studios = {}
         for index, count in enumerate(counts):

@@ -55,6 +55,7 @@ class AipaiLightHub:
         # Keep enough context to cover several hours of minute-by-minute Studio
         # output, without turning diagnostics into an unbounded memory sink.
         self.activity = deque(maxlen=500)
+        self.indicator_light = None  # No readback field exists in the vendor app.
         self._poll_interval = max(10, int(poll_interval))
         self._connected = False
         self._last_reply = 0.0  # monotonic time of the last device reply
@@ -137,6 +138,23 @@ class AipaiLightHub:
             "at": dt_util.utcnow().isoformat(), "level": level,
             "event": event, "detail": detail,
         })
+
+    async def async_set_indicator_light(self, enabled: bool) -> None:
+        """Vendor APK 3.1.93 public.js mcuLed: independent local MCU LED command."""
+        if type(enabled) is not bool:
+            raise ValueError("Tastenbeleuchtung erwartet Ein oder Aus.")
+        if not self.local or not self.available:
+            raise OSError("Die Lampe ist nicht lokal erreichbar.")
+        async def prepare(_body):
+            return ["mculed=" + ("on" if enabled else "off")]
+        try:
+            await self.client.async_studio_exchange(prepare)
+        except (OSError, ValueError) as err:
+            self.log_activity("Tastenbeleuchtung fehlgeschlagen", str(err), "error")
+            raise
+        self.indicator_light = enabled
+        self.log_activity("Tastenbeleuchtung gesendet", "Ein" if enabled else "Aus")
+        self._notify()
 
     async def async_connect(self) -> None:
         await self.hass.async_add_executor_job(self.client.connect)

@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.26.0] - 2026-11-16
+
+### Added
+
+- Lokaler Home-Assistant-Schalter „Tastenbeleuchtung“ und explizite Ein-/Aus-Aktionen im Studio, auch für Gruppen. Der dedizierte PilotLamp-Befehl verändert keine Spektralkanäle, Tageskurven oder Betriebsmodi.
+- Herstellerbefehl aus AIPAI APK 3.1.93 verifiziert: `mculed=on` / `mculed=off`. Anzeige ist die zuletzt erfolgreich gesendete Einstellung, kein ausgelesener Istzustand. Nach Neustart unbekannt; kein automatisches Wiedersenden. Wirkung auf Hardware noch durch Nutzer zu bestätigen.
+
 ## [0.25.0] - 2026-11-15
 
 ### Added

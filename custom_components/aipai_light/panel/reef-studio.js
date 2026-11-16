@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.25.0";
+const REEF_STUDIO_VERSION = "0.26.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -266,7 +266,7 @@ class ReefStudioPanel extends HTMLElement {
     this.status("Wird verarbeitet …");
     try {
       const lights = await this._hass.callWS({
-        type: "aipai_light/studio", serial: this.serial, kind: this.kind, action, ...extra,
+        type: "aipai_light/studio", serial: this.serial, kind: ["programs", "scenes"].includes(this.kind) ? this.kind : "programs", action, ...extra,
       });
       if (action === "save" || action === "delete") this.reset();
       this.receive(lights);
@@ -416,13 +416,15 @@ class ReefStudioPanel extends HTMLElement {
       scene && ["resume", "Szene abbrechen – Tagesprogramm fortsetzen"],
       !light.preview && (light.scene || light.restoring || (light.program && light.program_execution !== "device")) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
-    const signature = JSON.stringify(buttons);
+    const signature = JSON.stringify([buttons, light.indicator_light, light.group]);
     if (control.dataset.buttons !== signature) {
       control.dataset.buttons = signature;
-      control.innerHTML = buttons.map(([action, name]) => `<button data-action="${action}">${name}</button>`).join("");
-      control.querySelectorAll("button").forEach(button => { button.onclick = () => this.send(button.dataset.action); });
+      control.innerHTML = buttons.map(([action, name]) => `<button data-action="${action}">${name}</button>`).join("") +
+        `<div><strong>Tastenbeleuchtung · A8 SE</strong><p class="muted">${light.indicator_light === true ? 'Zuletzt gesendet: Ein' : light.indicator_light === false ? 'Zuletzt gesendet: Aus' : 'Zustand unbekannt / uneinheitlich'}</p><div class="row"><button data-indicator="true">Tastenbeleuchtung ein</button><button data-indicator="false">Tastenbeleuchtung aus</button></div><small>PilotLamp · ${light.group ? 'für alle Gruppenlampen. ' : ''}Kein ausgelesener Istzustand. Andere Modelle können den Befehl ignorieren.</small></div>`;
+      control.querySelectorAll("button").forEach(button => { button.onclick = () => button.dataset.indicator === undefined ? this.send(button.dataset.action) : this.send('indicator', {enabled: button.dataset.indicator === 'true'}); });
     }
     control.querySelectorAll("button").forEach(button => { button.disabled = this.busy || !light.local; });
+    control.querySelectorAll("[data-indicator]").forEach(button => { button.disabled = this.busy || !light.local || !light.online; });
     this.$.querySelectorAll("[data-live]").forEach(button => {
       button.disabled = this.busy || !light.local || !light.online;
     });

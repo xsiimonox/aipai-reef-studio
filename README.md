@@ -2,6 +2,8 @@
 
 # AiPai Studio
 
+Die A8-SE-Tastenbeleuchtung lässt sich lokal über den HA-Schalter **Tastenbeleuchtung** oder im Studio unter **Kanalpegel → Tastenbeleuchtung ein/aus** bedienen, auch für Gruppen. [Details, Befehlsnachweis und Grenzen](docs/pilotlamp.md).
+
 ### Diagnose bei abweichenden Lichtzeiten
 
 Im Studio unter **Diagnose → Diagnose herunterladen** wird eine JSON-Datei mit allen Lampen, gespeicherten Programmen, Lampenuhr, Zeitzone, nativen Schaltzeiten und Ereignissen gespeichert. Der Download funktioniert auch ohne Zwischenablage. Der Verlauf beginnt beim Laden der Integration bzw. beim Bridge-Neustart; vor einem Neustart exportieren. Die Datei enthält Lampennamen und Seriennummern und ist für die persönliche Fehlersuche bestimmt. Home Assistants native Diagnosedatei enthält ebenfalls Studio-Zustand und Ereignisse.
