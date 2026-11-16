@@ -51,6 +51,15 @@ def release_metadata(rows, model: str) -> dict:
     return {"latest": version(rows[0].get("status")), "notes": str(rows[0].get("remark") or "")[:2000]}
 
 
+async def check_all_lamps(studios):
+    """Check every fixture, retaining per-lamp failures and rate limits."""
+    for studio in studios:
+        try:
+            await studio.command({"action": "firmware_check"})
+        except (OSError, ValueError) as err:
+            studio.hub.log_activity("Lampen-Firmware-Prüfung übersprungen", str(err), "warning")
+
+
 class LampFirmware:
     """User-triggered metadata queries only; never send version= to a fixture."""
 

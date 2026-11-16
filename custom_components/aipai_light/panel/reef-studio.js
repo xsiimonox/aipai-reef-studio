@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.27.0";
+const REEF_STUDIO_VERSION = "0.27.1";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -24,7 +24,7 @@ const STYLE = `
   .transfer-card{width:min(100%,380px);padding:28px;border:1px solid #496176;border-radius:24px;background:#172433;text-align:center;box-shadow:0 24px 80px #0006}
   .transfer-spinner{width:36px;height:36px;margin:0 auto 18px;border:3px solid #395064;border-top-color:#a0e7df;border-radius:50%;animation:transfer-spin .85s linear infinite}
   .transfer-card p{margin-top:8px;color:#b8c8d9}.transfer-card:focus{outline:2px solid #a0e7df}
-  .firmware-card{overflow-wrap:anywhere}.firmware-card dl{display:grid;gap:6px;margin:18px 0}.firmware-card dt{color:#aebdce;font-size:.8rem}.firmware-card dd{margin:0 0 8px;font-variant-numeric:tabular-nums}.firmware-card .actions{align-items:stretch}
+  .firmware-list{display:grid;gap:10px;margin-top:20px}.firmware-lamp{overflow-wrap:anywhere}.firmware-lamp summary{display:grid;grid-template-columns:minmax(0,1fr) auto 18px;gap:12px;align-items:center;list-style:none}.firmware-lamp summary::-webkit-details-marker{display:none}.firmware-lamp summary:after{content:'⌄';text-align:center;color:#aebdce}.firmware-lamp[open] summary:after{transform:rotate(180deg)}.firmware-lamp summary strong,.firmware-lamp summary small{display:block}.firmware-lamp summary small{margin-top:4px;font-weight:400;font-variant-numeric:tabular-nums}.firmware-lamp dl{display:grid;gap:6px;margin:18px 0}.firmware-lamp dt{color:#aebdce;font-size:.8rem}.firmware-lamp dd{margin:0 0 8px;font-variant-numeric:tabular-nums}.firmware-lamp .pill{white-space:normal;text-align:center;font-size:.72rem;max-width:160px}.firmware-lamp .fw-detail{margin-top:16px;padding-top:16px;border-top:1px solid #2b3748}
   @keyframes transfer-spin{to{transform:rotate(360deg)}}
   @media(prefers-reduced-motion:reduce){.transfer-spinner{animation:none}}
   :host{display:block;color:#edf5ff;font:400 15px/1.45 system-ui,sans-serif}
@@ -100,7 +100,7 @@ const STYLE = `
   @media(max-width:1000px){.grid{grid-template-columns:minmax(0,1fr)}.grid>section{height:auto}.bar{grid-template-columns:105px minmax(50px,1fr) 46px}}
   @media(max-width:750px){main{padding:20px 16px 40px}.head{align-items:flex-start;gap:20px}.head .device-field{flex-basis:100%;max-width:none}.panel{padding:20px;border-radius:18px}.edit-grid{grid-template-columns:minmax(0,1fr);gap:28px}.mode-note{align-items:flex-start;flex-direction:column;gap:6px}.mode-note strong{text-align:left}.tabs{margin-top:20px}.tabs button{font-size:.76rem;padding:10px 3px}.actions>button{flex:1 1 160px}.actions>small{flex-basis:100%}.library-actions select{flex-basis:100%;width:100%}.library-actions .field{flex:1 1 120px}.slider{grid-template-columns:96px minmax(36px,1fr) 64px;gap:10px}.slider input[type=number]{width:64px}.slider:has(#master-level){grid-template-columns:96px minmax(30px,1fr) 64px;padding:8px}.preview-actions{grid-template-columns:120px minmax(0,1fr)}}
   @media(prefers-reduced-motion:reduce){button{transition:none}}
-  @media(max-width:420px){.tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs button{font-size:.84rem}.preview-actions{grid-template-columns:100px minmax(0,1fr)}}
+  @media(max-width:420px){.tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs button{font-size:.84rem}.preview-actions{grid-template-columns:100px minmax(0,1fr)}.firmware-lamp summary{grid-template-columns:minmax(0,1fr) 18px;gap:6px 10px}.firmware-lamp summary:after{grid-column:2;grid-row:1/3}.firmware-lamp summary .pill{grid-column:1;justify-self:start;max-width:none;text-align:left}}
 `;
 
 class ReefStudioPanel extends HTMLElement {
@@ -535,21 +535,22 @@ class ReefStudioPanel extends HTMLElement {
   firmwareEditor() {
     const node = this.$.querySelector('#editor');
     const lamps = this.lights.filter(light => !light.group);
-    node.innerHTML = `<h2>Lampen-Updates</h2><p class="muted">Versionsübersicht für jede Lampe. Die Herstellerabfrage überträgt die Seriennummer an den Herstellerserver. Sie startet erst über „Versionen prüfen“. Die Angaben kommen über unverschlüsseltes HTTP und sind keine lokal bestätigten Firmwareversionen.</p>
-      <div class="edit-grid">${lamps.map(light => {
+    this.firmwareExpanded ??= new Set();
+    node.innerHTML = `<div class="row spread"><div><h2>Lampen-Updates</h2><p class="muted">Herstellerstand → neueste Version · ${lamps.length} Lampen</p></div><button id="check-lamp-updates" class="primary" ${!lamps.length ? 'disabled' : ''}>Updates prüfen</button></div><p class="muted" style="margin-top:12px">Prüft alle Lampen unabhängig von der aktuellen Auswahl. Details über die jeweilige Zeile öffnen.</p>
+      <div class="firmware-list">${lamps.map(light => {
         const fw = light.firmware || {};
-        const result = fw.error ? 'Prüfung fehlgeschlagen' : fw.available === true ? 'Hersteller meldet ein Update' : fw.available === false ? 'Laut Hersteller kein neueres Update' : 'Noch nicht geprüft';
-        return `<section class="panel firmware-card"><h2>${escape(light.name || light.serial)}</h2><p class="muted">${escape(light.serial)} · ${escape(fw.vendor_model || 'Herstellermodell noch unbekannt')}</p>
+        const result = fw.error ? 'Prüfung fehlgeschlagen' : fw.available === true ? 'Update gemeldet' : fw.available === false ? 'Laut Hersteller aktuell' : 'Nicht geprüft';
+        return `<details class="firmware-lamp" data-firmware-lamp="${escape(light.serial)}" ${this.firmwareExpanded.has(light.serial) ? 'open' : ''}><summary><div><strong>${escape(light.name || light.serial)}</strong><small>${escape(fw.manufacturer_version || 'Unbekannt')} → ${escape(fw.latest || 'Unbekannt')}</small></div><span class="pill">${escape(result)}</span></summary><div class="fw-detail"><p class="muted">${escape(light.serial)} · ${escape(fw.vendor_model || 'Herstellermodell noch unbekannt')}</p>
           <dl><dt>Aktuell installiert · lokal bestätigt</dt><dd>Unbekannt – kein belegter Leseweg</dd><dt>Zuletzt beim Hersteller gemeldet</dt><dd>${escape(fw.manufacturer_version || 'Unbekannt')}</dd><dt>Neueste Hersteller-Version</dt><dd>${escape(fw.latest || 'Unbekannt')}</dd></dl>
-          <p>${escape(result)}</p><p class="muted">${escape(fw.notes || '')}</p>
+          <p class="muted">${escape(fw.notes || 'Keine Änderungshinweise verfügbar.')}</p>
           ${fw.checked_at ? `<small>Geprüft: ${escape(new Date(fw.checked_at).toLocaleString())}</small>` : ''}
           ${fw.error ? `<p class="notice">${escape(fw.error)}</p>` : ''}
-          <div class="actions"><button data-firmware-check="${escape(light.serial)}">Versionen prüfen</button><button data-firmware-install="${escape(light.serial)}" disabled>Firmware manuell installieren</button></div>
-          <p class="muted">${escape(fw.block_reason || 'Installation gesperrt: Firmware-Signatur und lokale Versionskontrolle sind nicht verifiziert.')}</p></section>`;
-      }).join('')}</div>`;
-    node.querySelectorAll('[data-firmware-check]').forEach(button => {
-      button.disabled = !!this.busy;
-      button.onclick = () => this.send('firmware_check', {serial: button.dataset.firmwareCheck});
+          <div class="actions"><button data-firmware-install="${escape(light.serial)}" disabled>Firmware manuell installieren</button></div>
+          <p class="muted">${escape(fw.block_reason || 'Installation gesperrt: Firmware-Signatur und lokale Versionskontrolle sind nicht verifiziert.')}</p></div></details>`;
+      }).join('')}</div><small style="display:block;margin-top:16px">Die Prüfung sendet die Seriennummern an den Hersteller. HTTP-Angaben sind nicht lokal bestätigte Firmwareversionen. Erneute Abfragen innerhalb einer Minute verwenden den vorhandenen Stand.</small>`;
+    node.querySelector('#check-lamp-updates').onclick = () => this.send('firmware_check_all');
+    node.querySelectorAll('[data-firmware-lamp]').forEach(details => {
+      details.ontoggle = () => {if (details.isConnected) details.open ? this.firmwareExpanded.add(details.dataset.firmwareLamp) : this.firmwareExpanded.delete(details.dataset.firmwareLamp);};
     });
   }
 

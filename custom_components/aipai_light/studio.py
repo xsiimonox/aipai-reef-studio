@@ -646,7 +646,7 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator", "firmware_check", "firmware_install",
+        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator", "firmware_check", "firmware_install", "firmware_check_all",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),
@@ -676,7 +676,14 @@ async def studio_command(hass, connection, msg) -> None:
     update_status = get_update_status(hass)
     try:
         action = msg["action"]
-        if action == "group_save":
+        if action == "firmware_check_all":
+            from .lamp_firmware import check_all_lamps
+            bulk_lock = hass.data.setdefault(f"{DOMAIN}_firmware_bulk_lock", asyncio.Lock())
+            if bulk_lock.locked():
+                raise ValueError("Die gemeinsame Versionsprüfung läuft bereits.")
+            async with bulk_lock:
+                await check_all_lamps(list(studios.values()))
+        elif action == "group_save":
             await groups.save(msg.get("item_id"), msg.get("name", ""), msg.get("serials", []))
         elif action == "group_delete":
             await groups.delete(msg.get("item_id", ""))

@@ -18,6 +18,14 @@ exec(compile(ast.Module(body=[n for n in tree.body if not isinstance(n, (ast.Imp
 
 
 class FirmwareTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bulk_check_continues_after_a_failed_or_rate_limited_lamp(self):
+        first = SimpleNamespace(command=AsyncMock(side_effect=ValueError("Bitte warten")), hub=SimpleNamespace(log_activity=Mock()))
+        second = SimpleNamespace(command=AsyncMock(), hub=SimpleNamespace(log_activity=Mock()))
+        await ns["check_all_lamps"]([first, second])
+        first.command.assert_awaited_once_with({"action": "firmware_check"})
+        second.command.assert_awaited_once_with({"action": "firmware_check"})
+        first.hub.log_activity.assert_called_once()
+
     def firmware(self, serial="demo"):
         hub = SimpleNamespace(serial=serial, hass=None, log_activity=Mock(), client=SimpleNamespace())
         result = ns["LampFirmware"](hub)

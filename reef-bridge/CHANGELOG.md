@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.8.1] - 2026-11-16
+
+- Gemeinsamer „Updates prüfen“-Button für alle Lampen, kompakte Versionszeilen mit aufklappbaren Details. Vorhandene Resultate innerhalb der einminütigen Abfragesperre bleiben erhalten. Die Firmwareinstallation bleibt gesperrt.
+
 ## [0.8.0] - 2026-11-16
 
 - Gemeinsames Menü „Lampen-Updates“ mit manueller Herstellerabfrage je Lampe. Antwortgröße und Gerätekennung werden geprüft; keine automatischen Herstellerabfragen.

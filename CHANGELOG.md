@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.27.1] - 2026-11-16
+
+### Changed
+
+- Ein gemeinsamer Button „Updates prüfen“ ersetzt die Einzelprüfungen und prüft alle Lampen unabhängig von der Auswahl. Fehler oder eine noch aktive Abfragesperre bei einer Lampe verhindern nicht die Prüfung der übrigen.
+- Kompakte Lampenliste mit Name, Versionsvergleich und Status. Modell, Seriennummer, Zeitstempel, Hinweise und Installationssperre stehen in aufklappbaren Details; geöffnete Zeilen bleiben beim Aktualisieren erhalten.
+
 ## [0.27.0] - 2026-11-16
 
 ### Added

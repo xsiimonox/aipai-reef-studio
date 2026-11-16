@@ -1,6 +1,6 @@
 # Lampen-Firmware: Versionsübersicht und Installationssperre
 
-Im Studio unter **Lampen-Updates** erscheint jede Lampe einzeln, auch wenn oben eine Gruppe ausgewählt ist. **Versionen prüfen** fragt die Hersteller-Datenbank ab. Erst dieser ausdrückliche Aufruf überträgt die jeweilige Seriennummer an `ahome.doseen.com`. Die Prüfung startet kein Lampenupdate und verändert weder Lichtprofil noch Lampenuhr. Zwischen Abfragen derselben Lampe liegen mindestens 60 Sekunden. Ein Internetzugang der Lampe selbst ist für diese Metadatenabfrage nicht nötig; HA bzw. Bridge benötigen Zugang zum Herstellerserver.
+Im Studio unter **Lampen-Updates** erscheint jede Lampe als kompakte Zeile, auch wenn oben eine Gruppe ausgewählt ist. Der gemeinsame Button **Updates prüfen** fragt die Hersteller-Datenbank für alle eingerichteten Lampen ab. Erst dieser ausdrückliche Aufruf überträgt die jeweiligen Seriennummern an `ahome.doseen.com`. Details lassen sich pro Zeile aufklappen. Die Prüfung startet kein Lampenupdate und verändert weder Lichtprofil noch Lampenuhr. Zwischen Abfragen derselben Lampe liegen mindestens 60 Sekunden; innerhalb dieser Zeit bleibt ihr vorhandenes Resultat erhalten und die Prüfung läuft mit den übrigen Lampen weiter. Ein Internetzugang der Lampe selbst ist für diese Metadatenabfrage nicht nötig; HA bzw. Bridge benötigen Zugang zum Herstellerserver.
 
 ## Welche Version wird angezeigt?
 

@@ -292,8 +292,8 @@ bool fwQuery(String sql,DynamicJsonDocument& data){
  int code=http.GET();FirmwareBuffer buffer;int read=code==200?http.writeToStream(&buffer):-1;http.end();
  return code==200&&read>=0&&!buffer.overflow&&!deserializeJson(data,buffer.data)&&data.is<JsonArray>()&&data.size()==1;
 }
-void checkLampFirmware(int i){
- Lamp& lamp=lamps[i];if(lamp.fwQueried&&millis()-lamp.fwAttempt<60000){fail("Bitte eine Minute zwischen Herstellerabfragen warten");return;}
+void checkLampFirmware(int i,bool batch=false){
+ Lamp& lamp=lamps[i];if(lamp.fwQueried&&millis()-lamp.fwAttempt<60000){if(!batch)fail("Bitte eine Minute zwischen Herstellerabfragen warten");return;}
  lamp.fwAttempt=millis();lamp.fwQueried=true;lamp.fwCurrent="";lamp.fwLatest="";lamp.fwVendorModel="";lamp.fwNotes="";lamp.fwError="Herstellerabfrage fehlgeschlagen oder Antwort ungültig";lamp.fwAvailable=false;lamp.fwChecked=time(nullptr);
  String serial=workspace["lamps"][i]["serial"]|"";DynamicJsonDocument device(12288),release(12288);
  if(fwIdentifier(serial)&&fwQuery("select d_sn,d_class,d_ver from tbl_device where d_sn='"+serial+"'",device)&&device[0]["d_sn"].as<String>()==serial){
@@ -302,7 +302,7 @@ void checkLampFirmware(int i){
    String latest=release[0]["status"].as<String>();if(fwVersion(latest)){lamp.fwCurrent=current;lamp.fwLatest=latest;lamp.fwVendorModel=model;lamp.fwNotes=release[0]["remark"].as<String>().substring(0,512);lamp.fwAvailable=fwCompare(latest,current)>0;lamp.fwError="";}
   }
  }
- logEvent(i,lamp.fwError.length()?lamp.fwError:"Hersteller meldet Firmware "+lamp.fwCurrent+"; neueste "+lamp.fwLatest+"; nicht lokal bestätigt");ok();
+ logEvent(i,lamp.fwError.length()?lamp.fwError:"Hersteller meldet Firmware "+lamp.fwCurrent+"; neueste "+lamp.fwLatest+"; nicht lokal bestätigt");if(!batch)ok();
 }
 void status() {
   DynamicJsonDocument doc(56000);
@@ -341,6 +341,7 @@ void status() {
 void studio(JsonDocument& msg) {
   String action=msg["action"]|"",kind=msg["kind"]|"programs",id=msg["item_id"]|"",serial=msg["serial"]|"";
   if(kind!="programs"&&kind!="scenes"){fail("Ungültige Bibliothek");return;}
+  if(action=="firmware_check_all"){for(int i=0;i<count();i++)checkLampFirmware(i,true);ok();return;}
   bool targets[MAX_LAMPS]={};int targetCount=0;
   if(serial.startsWith("group:")){
     JsonVariant group=workspace["groups"][serial.substring(6)];if(group.isNull()){fail("Gruppe nicht gefunden");return;}

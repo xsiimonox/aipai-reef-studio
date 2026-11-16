@@ -120,14 +120,26 @@ const root = path.resolve(__dirname, '..');
       };
     });
     await panel.locator('[data-tab=firmware]').click();
-    assert.equal(await panel.locator('[data-firmware-check]').count(), 2);
+    assert.equal(await panel.locator('#check-lamp-updates').count(), 1);
+    assert.equal(await panel.locator('[data-firmware-check]').count(), 0);
+    assert.equal(await panel.locator('[data-firmware-lamp]').count(), 2);
+    assert.equal(await panel.locator('[data-firmware-lamp][open]').count(), 0);
     assert.equal(await panel.locator('[data-firmware-install]:disabled').count(), 2);
-    await panel.locator('[data-firmware-check="six"]').click();
+    await panel.locator('[data-firmware-lamp="six"] summary').click();
+    await page.waitForFunction(()=>document.querySelector('aipai-reef-studio').firmwareExpanded.has('six'));
+    await panel.locator('#check-lamp-updates').click();
     await page.waitForFunction(()=>!document.querySelector('aipai-reef-studio').busy);
-    assert(await panel.evaluate(el => el.firmwareCalls.some(msg => msg.action === 'firmware_check' && msg.serial === 'six')));
+    assert.equal(await panel.evaluate(el => el.firmwareCalls.filter(msg => msg.action === 'firmware_check_all').length), 1);
+    assert(await panel.locator('[data-firmware-lamp="six"]').evaluate(el => el.open));
+    assert(await panel.locator('#check-lamp-updates').isEnabled());
     assert.equal(await panel.locator('#editor img').count(), 0);
     assert((await panel.locator('#editor').textContent()).includes('20260601'));
     assert((await panel.locator('#editor').textContent()).includes('kein belegter Leseweg'));
+    for (const width of [1440, 768, 390, 320]) {
+      await page.setViewportSize({width, height: 1000});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), `Firmware page overflow at ${width}`);
+      if (width === 1440 || width === 390) await page.screenshot({path: path.join(screenshotDir, `firmware-${width}.png`), fullPage: true});
+    }
     console.log('PASS: global program intensity, point duplication, 320–1440px layout, editors, groups, no JS errors. Screenshots: ' + screenshotDir);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });
