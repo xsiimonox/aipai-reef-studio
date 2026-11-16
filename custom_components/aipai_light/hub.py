@@ -1189,7 +1189,14 @@ class AipaiLightHub:
 
     def _notify(self) -> None:
         self._check_dropout_edge()
-        for entity in self._entities:
+        # A late HTTP/MQTT callback can arrive after Home Assistant has unloaded
+        # an entity during an integration reload.  Such an entity remains in
+        # this lightweight registry but has ``hass is None``; writing its state
+        # raises and prevents every following entity from being updated.
+        active_entities = [entity for entity in self._entities if getattr(entity, "hass", None) is not None]
+        if len(active_entities) != len(self._entities):
+            self._entities = active_entities
+        for entity in active_entities:
             entity.async_write_ha_state()
 
     def _check_dropout_edge(self) -> None:

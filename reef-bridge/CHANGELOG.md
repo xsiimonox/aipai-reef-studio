@@ -1,5 +1,20 @@
 # Reef Bridge Changelog
 
+## [0.11.0] - 2026-11-16
+
+- Automatische Update-Prüfung bei jedem Öffnen des Webinterfaces sowie ein manueller „Updates prüfen“-Button.
+- Verfügbare Bridge-Firmware kann direkt per OTA installiert werden. Die Bridge prüft eine feste HTTPS-Vertrauenskette, Manifestversion, exakte Dateigröße und die beim Release erzeugte SHA-256-Prüfsumme, bevor sie die neue Boot-Partition aktiviert und neu startet.
+- WLAN, Lampen, Gruppen, Programme und Szenen bleiben beim OTA-Update erhalten; der USB-Installer bleibt als Wiederherstellungsweg verfügbar.
+- Die Bridge meldet sich per DHCP mit dem Hostnamen `ReefBridge`, damit sie im Router eindeutig benannt erscheint; mDNS bleibt unter `reefbridge.local` erreichbar.
+
+## [0.10.2] - 2026-11-16
+
+- AiPai Studio zeigt die gespeicherte lokale IP-Adresse jeder Bridge-Lampe in der Auswahl und im Erreichbarkeitsstatus an.
+
+## [0.10.1] - 2026-11-16
+
+- Die irrtümliche Modellbezeichnung „A7N mini“ wurde zu „A7 S3 Mini“ korrigiert. Das Modell wird als 6-Kanal-Lampe erkannt.
+
 ## [0.10.0] - 2026-11-16
 
 - Geführte Übernahme einer fabrikneuen AIPAI-Lampe direkt im Bridge-Webinterface: Lampen-Hotspot suchen, optionales Hotspot-Passwort eingeben, gespeichertes Heim-WLAN übertragen sowie IP und Seriennummer automatisch übernehmen.

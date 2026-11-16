@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.1] - 2026-11-16
+
+### Added
+
+- AiPai Studio zeigt bei jeder einzelnen Lampe die aktuelle lokale IP-Adresse sowohl in der Lampenauswahl als auch im Erreichbarkeitsstatus an. Gruppen zeigen bewusst keine einzelne IP.
+- Das Modell A7 S3 Mini (`A7S3`) wird als Sechskanal-Lampe ohne Mondlichtkanal erkannt.
+
+### Fixed
+
+- Späte Geräte-Rückmeldungen nach dem Neuladen der Integration überspringen bereits entladene Home-Assistant-Entities, damit die übrigen Lampen weiter aktualisiert werden.
+
 ## [0.28.0] - 2026-11-16
 
 ### Fixed

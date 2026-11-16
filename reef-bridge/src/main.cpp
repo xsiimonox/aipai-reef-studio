@@ -8,6 +8,8 @@
 #include <LittleFS.h>
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
+#include <Update.h>
+#include <mbedtls/sha256.h>
 #include <time.h>
 #include "web_ui.h"
 
@@ -18,7 +20,41 @@ Preferences prefs;
 DynamicJsonDocument workspace(65536);
 const int MAX_LAMPS = 4;
 const char* codes[] = {"w","b","r","g","b2","p","uv","wm"};
+const char* bridgeHostname = "ReefBridge";
 const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
+const char* updateManifestUrl = "https://xsiimonox.github.io/aipai-reef-studio/bridge-update.json";
+const char* updateFirmwareUrl = "https://xsiimonox.github.io/aipai-reef-studio/app.bin";
+const char* updateRootCa = R"CERT(-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----)CERT";
 const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 const IPAddress setupIp(192,168,8,1),setupGateway(192,168,8,1),setupMask(255,255,255,0);
 struct Lamp {
@@ -35,9 +71,10 @@ struct Lamp {
   String deviceClock, deviceTimezone, power, observed;
   int openHour=0, closeHour=0;
 } lamps[MAX_LAMPS];
-bool fsReady=false, updateAvailable=false, provisioningAp=false;
-String latestVersion, updateError, apPassword, apSsid;
-uint32_t lastUpdateCheck=0, lastReconnect=0, provisioningApStop=0;
+bool fsReady=false, updateAvailable=false, updateCheckRequested=false, updateInstalling=false, provisioningAp=false;
+String latestVersion, latestSha256, updateError, apPassword, apSsid;
+size_t latestFirmwareSize=0;
+uint32_t lastUpdateCheck=0, lastReconnect=0, provisioningApStop=0, otaRestartAt=0;
 bool expired(uint32_t deadline) { return int32_t(millis()-deadline)>=0; }
 int count() { return workspace["lamps"].size(); }
 int channels(int i) { return workspace["lamps"][i]["channels"] | 6; }
@@ -381,7 +418,7 @@ void status() {
   DynamicJsonDocument doc(56000);
   doc["version"]=BRIDGE_VERSION;doc["now_epoch"]=double(time(nullptr));doc["clock_valid"]=time(nullptr)>=1700000000;doc["ip"]=WiFi.localIP().toString();
   JsonObject provision=doc.createNestedObject("provision");provision["active"]=provisioningAp;provision["ssid"]=apSsid;provision["url"]="http://192.168.8.1";provision["home_configured"]=prefs.getString("ssid","").length()>0;
-  JsonObject update=doc.createNestedObject("update");update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;
+  JsonObject update=doc.createNestedObject("update");update["current"]=BRIDGE_VERSION;update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;update["checking"]=updateCheckRequested;update["installing"]=updateInstalling;
   JsonArray lights=doc.createNestedArray("lights");
   for(int i=0;i<count();i++){
     expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
@@ -495,12 +532,38 @@ void studio(JsonDocument& msg) {
   }ok();
 }
 void checkUpdate() {
-  lastUpdateCheck=millis();WiFiClientSecure client;client.setInsecure();HTTPClient http;http.setConnectTimeout(1200);http.setTimeout(2000);
-  if(!http.begin(client,String(installerUrl)+"bridge-update.json"))return;int code=http.GET();String raw=code==200?http.getString():"";http.end();
-  DynamicJsonDocument data(1024);if(code!=200||deserializeJson(data,raw)){updateError="Update-Prüfung derzeit nicht erreichbar";return;}
+  lastUpdateCheck=millis();updateCheckRequested=false;updateError="";
+  if(time(nullptr)<1700000000){updateError="Update-Prüfung wartet auf eine gültige Netzwerkzeit";return;}
+  WiFiClientSecure client;client.setCACert(updateRootCa);HTTPClient http;http.setConnectTimeout(3000);http.setTimeout(5000);http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  if(!http.begin(client,updateManifestUrl)){updateError="Update-Prüfung konnte nicht gestartet werden";return;}int code=http.GET();String raw=code==200?http.getString():"";http.end();
+  DynamicJsonDocument data(1536);if(code!=200||raw.length()>4096||deserializeJson(data,raw)){updateError="Update-Prüfung derzeit nicht erreichbar";return;}
   String remote=data["version"]|"";int a,b,c,x,y,z;
-  if(sscanf(remote.c_str(),"%d.%d.%d",&a,&b,&c)!=3||sscanf(BRIDGE_VERSION,"%d.%d.%d",&x,&y,&z)!=3)return;
-  latestVersion=remote;updateAvailable=a>x||(a==x&&(b>y||(b==y&&c>z)));updateError="";
+  String sha=data["sha256"]|"";size_t size=data["size"]|0;
+  bool validSha=sha.length()==64;for(size_t i=0;i<sha.length();i++)if(!isxdigit((unsigned char)sha[i]))validSha=false;
+  if(sscanf(remote.c_str(),"%d.%d.%d",&a,&b,&c)!=3||sscanf(BRIDGE_VERSION,"%d.%d.%d",&x,&y,&z)!=3||!validSha||size<100000||size>1310720){updateError="Update-Manifest ist ungültig";return;}
+  sha.toLowerCase();latestVersion=remote;latestSha256=sha;latestFirmwareSize=size;updateAvailable=a>x||(a==x&&(b>y||(b==y&&c>z)));
+}
+class OtaHashStream:public Stream{
+ public:
+  mbedtls_sha256_context hash;size_t written=0;bool failed=false;
+  OtaHashStream(){mbedtls_sha256_init(&hash);mbedtls_sha256_starts_ret(&hash,0);}
+  ~OtaHashStream(){mbedtls_sha256_free(&hash);}
+  int available()override{return 0;}int read()override{return -1;}int peek()override{return -1;}void flush()override{}
+  size_t write(uint8_t value)override{return write(&value,1);}
+  size_t write(const uint8_t* data,size_t size)override{size_t n=Update.write(const_cast<uint8_t*>(data),size);if(n){mbedtls_sha256_update_ret(&hash,data,n);written+=n;}if(n!=size)failed=true;return n;}
+  String finish(){unsigned char digest[32];mbedtls_sha256_finish_ret(&hash,digest);String result;const char* hex="0123456789abcdef";for(unsigned char value:digest){result+=hex[value>>4];result+=hex[value&15];}return result;}
+};
+void installBridgeUpdate(){
+  if(updateInstalling){fail("Ein Update wird bereits installiert",409);return;}
+  checkUpdate();if(updateError.length()){fail(updateError,503);return;}if(!updateAvailable){fail("Es ist kein neueres Bridge-Update verfügbar",409);return;}
+  updateInstalling=true;WiFiClientSecure client;client.setCACert(updateRootCa);HTTPClient http;http.setConnectTimeout(5000);http.setTimeout(15000);http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  if(!http.begin(client,updateFirmwareUrl)){updateInstalling=false;fail("Firmware-Download konnte nicht gestartet werden",503);return;}
+  int code=http.GET(),length=http.getSize();
+  if(code!=200||length!=int(latestFirmwareSize)||!Update.begin(latestFirmwareSize,U_FLASH)){http.end();updateInstalling=false;fail("Firmware-Größe oder OTA-Speicher ist ungültig",507);return;}
+  OtaHashStream target;int received=http.writeToStream(&target);http.end();String actual=target.finish();
+  if(received!=int(latestFirmwareSize)||target.written!=latestFirmwareSize||target.failed||actual!=latestSha256){Update.abort();updateInstalling=false;fail("Firmware-Prüfsumme stimmt nicht; Update verworfen",422);return;}
+  if(!Update.end(false)||!Update.isFinished()){Update.abort();updateInstalling=false;fail("Firmware konnte nicht sicher aktiviert werden",500);return;}
+  server.send(200,"application/json","{\"ok\":true,\"restarting\":true}");otaRestartAt=millis()+1500;
 }
 void portal(){server.sendHeader("Location","http://192.168.8.1/",true);server.send(302,"text/plain","");}
 void setup() {
@@ -509,12 +572,14 @@ void setup() {
   if(!fsReady&&!prefs.getBool("studio_fs",false)){Serial.println("Initializing Studio filesystem");fsReady=LittleFS.begin(true);}
   if(fsReady)prefs.putBool("studio_fs",true);
   loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");apSsid="ReefBridge-"+String((uint32_t)ESP.getEfuseMac(),HEX);
-  WiFi.mode(WIFI_AP_STA);startSetupAp(false);
+  WiFi.mode(WIFI_AP_STA);WiFi.setHostname(bridgeHostname);startSetupAp(false);
   WiFi.begin(prefs.getString("ssid","").c_str(),prefs.getString("wifi_pass","").c_str());configTime(0,0,"pool.ntp.org","time.cloudflare.com");
   Serial.println("Setup: http://192.168.8.1 | AP password: "+apPassword);
-  server.on("/",HTTP_GET,[]{server.send_P(200,"text/html; charset=utf-8",(const char*)WEB_UI,sizeof(WEB_UI));});
+  server.on("/",HTTP_GET,[]{updateCheckRequested=true;server.send_P(200,"text/html; charset=utf-8",(const char*)WEB_UI,sizeof(WEB_UI));});
   for(const char* probe:{"/generate_204","/hotspot-detect.html","/connecttest.txt"})server.on(probe,HTTP_GET,portal);
   server.on("/api/status",HTTP_GET,status);
+  server.on("/api/update/check",HTTP_POST,[]{if(WiFi.status()!=WL_CONNECTED){fail("Für die Update-Prüfung fehlt die Internetverbindung",503);return;}checkUpdate();if(updateError.length())fail(updateError,503);else ok();});
+  server.on("/api/update/install",HTTP_POST,installBridgeUpdate);
   server.on("/api/provision/enable",HTTP_POST,[]{
     startSetupAp(true);DynamicJsonDocument result(384);result["ok"]=true;result["ssid"]=apSsid;result["password"]=apPassword;result["url"]="http://192.168.8.1";
     String json;serializeJson(result,json);server.send(200,"application/json",json);
@@ -553,13 +618,14 @@ void setup() {
 }
 void loop() {
   dnsServer.processNextRequest();server.handleClient();
+  if(otaRestartAt&&expired(otaRestartAt)){delay(50);ESP.restart();}
   if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
   if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");}
   if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");if(!provisioningAp){dnsServer.stop();WiFi.softAPdisconnect(true);}started=true;}
     // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
     // between fixtures; each fixture has independent mode, timers and clock.
     static int cursor=0;for(int n=0;n<count();n++){int i=(cursor+n)%count();expire(i);if(lamps[i].force||millis()-lamps[i].lastOutput>=30000){lamps[i].force=false;lamps[i].lastOutput=millis();output(i);cursor=(i+1)%count();break;}}
-    if(!lastUpdateCheck||millis()-lastUpdateCheck>=6UL*60*60*1000)checkUpdate();
+    if(updateCheckRequested||!lastUpdateCheck||millis()-lastUpdateCheck>=6UL*60*60*1000)checkUpdate();
   }else if(millis()-lastReconnect>30000){lastReconnect=millis();WiFi.reconnect();}
   delay(2);
 }

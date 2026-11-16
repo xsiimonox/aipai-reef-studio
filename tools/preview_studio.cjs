@@ -17,13 +17,15 @@ const root = path.resolve(__dirname, '..');
     await page.goto('http://studio.test/');
     await page.evaluate(() => {
       const points = [0, 480, 600, 1080, 1200].map((minute, i) => ({ minute, levels: i === 2 || i === 3 ? [25, 65, 3, 2, 80, 10, 5, 15] : Array(8).fill(0) }));
-      const light = { serial: 'demo', name: 'Riffaquarium · A8SE II MAX Pro', labels: ['White', 'Blue', 'Red', 'Green', 'Royal Blue', 'Purple', 'UV', 'Warm White'], programs: { day: { name: 'Riff · Tageslicht', points } }, scenes: { blue: { name: 'Blaulicht', levels: [0, 40, 0, 0, 80, 15, 0, 0] } }, program: 'day', program_execution: 'device', startup_hold: false, scene: null, preview: null, firmware_points: points, local: true, online: true, minute: 780, timezone: 'Europe/Berlin', temperature: 38.5, sent: null, reported: [25, 65, 3, 2, 80, 10, 5, 15], activity: [] };
+      const light = { serial: 'demo', name: 'Riffaquarium · A8SE II MAX Pro', ip_address: '192.0.2.10', labels: ['White', 'Blue', 'Red', 'Green', 'Royal Blue', 'Purple', 'UV', 'Warm White'], programs: { day: { name: 'Riff · Tageslicht', points } }, scenes: { blue: { name: 'Blaulicht', levels: [0, 40, 0, 0, 80, 15, 0, 0] } }, program: 'day', program_execution: 'device', startup_hold: false, scene: null, preview: null, firmware_points: points, local: true, online: true, minute: 780, timezone: 'Europe/Berlin', temperature: 38.5, sent: null, reported: [25, 65, 3, 2, 80, 10, 5, 15], activity: [] };
       const panel = document.createElement('aipai-reef-studio');
       const six = {...light,serial:'six',name:'A7 SIII',labels:light.labels.slice(0,6)};
       panel.hass = { callWS: async () => ({ lights: [light,six], groups: [{ ...light, serial: 'group:demo', group: true, group_id: 'demo', name: 'Hauptbecken', members: ['six','demo'] }] }) };
       document.body.append(panel);
     });
     const panel = page.locator('aipai-reef-studio');
+    assert((await panel.locator('#lamp option[value="demo"]').textContent()).includes('192.0.2.10'));
+    assert((await panel.locator('#online').textContent()).includes('192.0.2.10'));
     await panel.locator('#library').selectOption('day');
     assert.equal(await panel.locator('#activate').textContent(), 'Auf Lampe speichern & aktivieren');
     assert((await panel.locator('#active-mode').textContent()).startsWith('Auf Lampe gespeichert'));

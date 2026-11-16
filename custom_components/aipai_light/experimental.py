@@ -245,5 +245,10 @@ class ExperimentalDeviceHub:
         self._notify()
 
     def _notify(self) -> None:
-        for entity in self._entities:
+        # Ignore and prune entities that were unloaded while a late device
+        # callback was already queued on the Home Assistant event loop.
+        active_entities = [entity for entity in self._entities if getattr(entity, "hass", None) is not None]
+        if len(active_entities) != len(self._entities):
+            self._entities = active_entities
+        for entity in active_entities:
             entity.async_write_ha_state()

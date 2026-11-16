@@ -82,6 +82,7 @@ CHANNEL_PROFILES: dict[str, tuple[int, list[str]]] = {
 MODEL_TABLE: dict[str, tuple[int, list[str]]] = {
     # A7-S saltwater (6ch)
     "A7S2": (6, DEFAULT_LABELS[:6]),
+    "A7S3": (6, DEFAULT_LABELS[:6]),
     "A7S6": (6, DEFAULT_LABELS[:6]),
     # A8-S / A8-SE saltwater (6ch)
     "A8S2": (6, DEFAULT_LABELS[:6]),
@@ -121,7 +122,7 @@ MODEL_TABLE: dict[str, tuple[int, list[str]]] = {
 # HAS moon, A7S6 does NOT. Anything not listed here is assumed moon-capable, so
 # this only suppresses the control where we KNOW it does nothing - extend as
 # other models are confirmed.
-MODELS_WITHOUT_MOON = {"A7S2", "A7S6"}
+MODELS_WITHOUT_MOON = {"A7S2", "A7S3", "A7S6"}
 
 
 def normalize_model(model: str) -> str:

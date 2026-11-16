@@ -18,7 +18,7 @@ class BridgeTransport {
     const lights = workspace.lamps.map((lamp, index) => {
       const runtime = data.lights[index];
       return {...runtime, bridge_mode:runtime.mode,serial:lamp.serial,name:lamp.name,labels:BRIDGE_LABELS.slice(0,lamp.channels),
-        programs:workspace.programs,scenes:workspace.scenes,local:true,online:runtime.online,
+        programs:workspace.programs,scenes:workspace.scenes,local:true,ip_address:lamp.lamp_ip,online:runtime.online,
         firmware_points:lamp.points,timezone:lamp.timezone==='CET-1CEST,M3.5.0,M10.5.0/3'?'Europe/Berlin':lamp.timezone,now_epoch:data.now_epoch,
         activity:(runtime.log || []).map(event=>({at:event.at,level:event.level || 'info',event:event.message}))};
     });
@@ -28,12 +28,13 @@ class BridgeTransport {
       const common = field => members.every(lamp=>field === 'scene' ? lamp.scene?.id === first.scene?.id && lamp.scene?.manual === first.scene?.manual : field === 'preview' ? !!lamp.preview === !!first.preview : JSON.stringify(lamp[field])===JSON.stringify(first[field])) ? first[field] : null;
       return {...first,serial:'group:'+id,group:true,group_id:id,name:group.name,members:group.serials,
         labels:BRIDGE_LABELS.slice(0,Math.max(...members.map(lamp=>lamp.labels.length))),
+        ip_address:null,
         online:members.every(lamp=>lamp.online),program:common('program'),program_execution:common('program_execution'),
         startup_hold:members.some(lamp=>lamp.startup_hold),scene:common('scene'),preview:common('preview'),
         indicator_light:common('indicator_light'),physical_resume:common('physical_resume'),
         sent:null,reported:[],error:members.map(lamp=>lamp.error).filter(Boolean).join(' · ')};
     });
-    return {lights,groups,update:{current:data.version,latest:data.update.latest,available:data.update.available,url:data.update.installer_url}};
+    return {lights,groups,update:{current:data.version,latest:data.update.latest,available:data.update.available,url:data.update.installer_url,error:data.update.error,checking:data.update.checking,installing:data.update.installing}};
   }
 }
 class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
@@ -53,7 +54,10 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
       if (section) {section.id='editor';this.setupEditor();}
     }
     const update = this.$.querySelector('.update-note');
-    if (update) update.innerHTML = `Bridge-Update verfügbar: v${safe(this.updateInfo.latest)}. <a style="color:inherit" href="https://xsiimonox.github.io/aipai-reef-studio/" target="_blank" rel="noopener">USB-Installer öffnen</a>`;
+    if (update) {
+      update.innerHTML = `Bridge-Update verfügbar: <strong>v${safe(this.updateInfo.latest)}</strong>. <button id="install-bridge-update-banner">Jetzt installieren</button>`;
+      update.querySelector('#install-bridge-update-banner').onclick=()=>this.installBridgeUpdate();
+    }
   }
   editor() { if (this.kind === 'setup') return this.setupEditor();return super.editor(); }
   async refresh() {
@@ -62,6 +66,8 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
     if(this.kind === 'setup' && previousSetup!==JSON.stringify(this._hass?.state?.workspace?.lamps))this.setupEditor();
     if (!this._hass?.state && !this.light) this.status('Verbindung zur Reef Bridge wird hergestellt …');
   }
+  async checkBridgeUpdate(){if(this.busy)return;this.setBusy(true);try{await this._hass.api('update/check',{});this.receive(await this._hass.callWS({action:'list'}));this.status(this.updateInfo?.available?`Bridge-Update v${this.updateInfo.latest} ist verfügbar.`:'Die Reef Bridge ist aktuell.');if(this.kind==='setup')this.setupEditor();}catch(error){this.status(error.message);}finally{this.setBusy(false);this.update();}}
+  async installBridgeUpdate(){if(this.busy||!confirm(`Reef Bridge jetzt auf v${this.updateInfo?.latest || 'neu'} aktualisieren und neu starten? Lampenprogramme laufen währenddessen autonom weiter.`))return;this.setBusy(true);try{await this._hass.api('update/install',{});this.status('Update geprüft und installiert. Die Reef Bridge startet neu …');}catch(error){this.status(error.message);this.setBusy(false);this.update();}}
   setupEditor() {
     const node = this.$.querySelector('#editor');
     if (!node) return;
@@ -75,7 +81,7 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
       <label class="field">Name<input id="device-name" maxlength="64" required></label>
       <label class="field">Lampen-IP<input id="device-ip" placeholder="192.168.178.141" required></label>
       <label class="field">Seriennummer<input id="device-serial" maxlength="32" required></label>
-      <label class="field">Kanäle<select id="device-count"><option value="6">6 · A7 SIII / A7N mini / A8SE v1</option><option value="8">8 · MAX / MAX Pro</option></select></label>
+      <label class="field">Kanäle<select id="device-count"><option value="6">6 · A7 SIII / A7 S3 Mini / A8SE v1</option><option value="8">8 · MAX / MAX Pro</option></select></label>
       <label class="field">Zeitzone (POSIX)<input id="device-zone" value="CET-1CEST,M3.5.0,M10.5.0/3" required></label>
       <small>Europa/Berlin ist vorbelegt, inklusive Sommerzeit. Die Seriennummer wird vor jedem Schreibzyklus geprüft.</small>
       <div class="actions"><button id="store-device" class="primary">Lampe speichern</button></div>
@@ -87,7 +93,7 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
         <label class="field">AIPAI-Lampen-Hotspot<select id="lamp-hotspot" required><option value="">Bitte suchen und auswählen</option>${networks.map(network=>`<option value="${safe(network.ssid)}">${safe(network.ssid)} · ${network.rssi} dBm${network.open ? ' · offen' : ''}</option>`).join('')}</select></label>
         <label class="field">Hotspot-Passwort · falls erforderlich<input id="lamp-hotspot-password" type="password" maxlength="63" autocomplete="new-password"></label>
         <label class="field">Lampenname<input id="provision-name" maxlength="64" required placeholder="z. B. Riff links"></label>
-        <label class="field">Kanäle<select id="provision-channels"><option value="6">6 · A7 SIII / A7N mini / A8SE v1</option><option value="8">8 · MAX / MAX Pro</option></select></label>
+        <label class="field">Kanäle<select id="provision-channels"><option value="6">6 · A7 SIII / A7 S3 Mini / A8SE v1</option><option value="8">8 · MAX / MAX Pro</option></select></label>
         <label class="field">Zeitzone (POSIX)<input id="provision-zone" value="CET-1CEST,M3.5.0,M10.5.0/3" required></label>
         <div class="actions"><button id="provision-lamp" class="primary">WLAN übertragen und Lampe übernehmen</button></div>
         ${this.provisionResult ? `<p class="notice">Lampe übernommen: ${safe(this.provisionResult.model)} · ${safe(this.provisionResult.serial)} · ${safe(this.provisionResult.lamp_ip)}</p><div class="actions"><button id="disable-provision">Einrichtungsmodus beenden</button></div>` : ''}
@@ -95,6 +101,7 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
       </div>
       <div><h2>WLAN</h2><label class="field">2,4-GHz WLAN / SSID<input id="wifi-ssid" maxlength="32"></label><label class="field">WLAN-Passwort<input id="wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
       <div class="actions"><button id="store-wifi">WLAN speichern</button></div><small>Nach Verbindung schließt das Setup-WLAN. Danach erreichst du die Bridge unter http://reefbridge.local oder über ihre Router-IP. Das konfliktfreie Setup-WLAN verwendet http://192.168.8.1.</small>
+      <h2 style="margin-top:28px">Bridge-Update</h2><p class="muted">Installiert: v${safe(state?.version || '…')} · Neueste: ${safe(state?.update?.latest || 'noch nicht geprüft')}</p>${state?.update?.error ? `<p class="notice">${safe(state.update.error)}</p>` : ''}<div class="actions"><button id="check-bridge-update">Updates prüfen</button>${state?.update?.available ? '<button id="install-bridge-update" class="primary">Jetzt installieren</button>' : ''}</div><small>Beim Öffnen dieser Oberfläche wird automatisch geprüft. Das OTA-Update verifiziert HTTPS, Dateigröße und SHA-256-Prüfsumme, bevor die Bridge neu startet.</small>
       <h2 style="margin-top:28px">Sicherung</h2><p class="muted">Enthält Lampen, Gruppen, Programme und Szenen. WLAN-Passwörter werden nicht exportiert.</p><div class="actions"><button id="backup">Backup herunterladen</button></div><label class="field">Backup importieren<input id="restore" type="file" accept="application/json"></label>
       <small>Import ersetzt die lokale Bibliothek und Lampeneinrichtung. Laufende Vorschauen enden.</small></div></div></div>`;
     let index=-1;
@@ -107,6 +114,8 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
       await this._hass.api('fixture',{index,name:node.querySelector('#device-name').value,lamp_ip:node.querySelector('#device-ip').value,serial:node.querySelector('#device-serial').value,channels:Number(node.querySelector('#device-count').value),timezone:node.querySelector('#device-zone').value});
     });
     node.querySelector('#store-wifi').onclick=()=>run(()=>this._hass.api('wifi',{ssid:node.querySelector('#wifi-ssid').value,password:node.querySelector('#wifi-password').value}));
+    node.querySelector('#check-bridge-update').onclick=()=>this.checkBridgeUpdate();
+    const installUpdate=node.querySelector('#install-bridge-update');if(installUpdate)installUpdate.onclick=()=>this.installBridgeUpdate();
     node.querySelector('#enable-provision').onclick=async()=>{if(this.busy)return;this.setBusy(true);try{this.provisionAccess=await this._hass.api('provision/enable',{});this.receive(await this._hass.callWS({action:'list'}));this.status(`Jetzt mit ${this.provisionAccess.ssid} verbinden und ${this.provisionAccess.url} öffnen.`);this.setupEditor();}catch(error){this.status(error.message);}finally{this.setBusy(false);this.update();}};
     const scan=node.querySelector('#scan-lamp-hotspots');if(scan)scan.onclick=async()=>{if(this.busy)return;this.setBusy(true);try{const result=await this._hass.api('provision/scan');this.provisionNetworks=result.networks||[];this.setupEditor();this.status(this.provisionNetworks.length?'Hotspots gefunden. Bitte deine Lampe auswählen.':'Keine WLAN-Hotspots gefunden.');}catch(error){this.status(error.message);}finally{this.setBusy(false);this.update();}};
     const provisionButton=node.querySelector('#provision-lamp');if(provisionButton)provisionButton.onclick=async()=>{

@@ -1,6 +1,8 @@
 {
-  "version": "0.10.0",
-  "studio_version": "0.28.0",
+  "version": "0.11.0",
+  "studio_version": "0.28.1",
+  "size": 0,
+  "sha256": "GENERATED_BY_RELEASE",
   "installer_url": "https://xsiimonox.github.io/aipai-reef-studio/",
   "release_url": "https://github.com/xsiimonox/aipai-reef-studio/tree/main/reef-bridge"
 }

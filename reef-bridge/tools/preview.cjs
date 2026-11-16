@@ -9,13 +9,15 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    .replace('/* BRIDGE_ADAPTER */',()=>fs.readFileSync(path.join(root,'web/bridge-adapter.js'),'utf8'));
  const points=[0,540,660,1080,1200].map((minute,i)=>({minute,levels:[25,70,3,2,85,12,5,15].map(v=>i===2||i===3?v:0)}));
  const workspace={schema:1,lamps:[],programs:{day:{name:'Riff · Tageslicht',points}},scenes:{blue:{name:'Blaulicht',levels:[0,40,0,0,80,10,0,0]}},groups:{}};
- const calls=[],runtime=[];let state;const provision={active:false,ssid:'ReefBridge-DEMO',url:'http://192.168.8.1',home_configured:true};
- const reset=()=>{state={version:firmware,workspace,now_epoch:Date.now()/1000,update:{available:false,latest:firmware},provision,lights:runtime};};reset();
+ const calls=[],runtime=[];let state;const provision={active:false,ssid:'ReefBridge-DEMO',url:'http://192.168.8.1',home_configured:true},update={available:false,latest:firmware,error:''};
+ const reset=()=>{state={version:firmware,workspace,now_epoch:Date.now()/1000,update,provision,lights:runtime};};reset();
  const browser=await chromium.launch({headless:true});
  try{
   const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('http://bridge.test/**',async route=>{
    const url=new URL(route.request().url());if(url.pathname==='/'){await route.fulfill({contentType:'text/html; charset=utf-8',body:html});return;}
+   if(url.pathname==='/api/update/check'){update.available=true;update.latest='99.0.0';calls.push({path:url.pathname,body:{}});reset();await route.fulfill({json:{ok:true}});return;}
+   if(url.pathname==='/api/update/install'){calls.push({path:url.pathname,body:{}});await route.fulfill({json:{ok:true,restarting:true}});return;}
    if(url.pathname==='/api/provision/scan'){calls.push({path:url.pathname,body:{}});await route.fulfill({json:{networks:[{ssid:'A8SE-FACTORY',rssi:-42,open:true}]}});return;}
    const msg=route.request().postDataJSON();
    if(url.pathname==='/api/provision/enable'){provision.active=true;calls.push({path:url.pathname,body:msg});reset();await route.fulfill({json:{ok:true,ssid:provision.ssid,password:'ReefBridge2026!',url:provision.url}});return;}
@@ -43,6 +45,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   // Empty workspace must still show an accessible onboarding form.
   await ui.locator('#device-name').fill('Riff · A7 SIII');await ui.locator('#device-ip').fill('192.0.2.20');await ui.locator('#device-serial').fill('DEMO6');await ui.locator('#store-device').click();
   await ui.locator('#library').waitFor();await ui.locator('#library').selectOption('day');
+  assert((await ui.locator('#lamp option[value="DEMO6"]').textContent()).includes('192.0.2.20'));
+  assert((await ui.locator('#online').textContent()).includes('192.0.2.20'));
   assert.equal(await ui.locator('#activate').textContent(),'Auf Lampe speichern & aktivieren');
   await ui.locator('#activate').click();
   await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
@@ -70,6 +74,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   for(const width of [1440,1024,768,390,320]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow at '+width);assert.deepEqual(await ui.evaluate(el=>[...el.shadowRoot.querySelectorAll('button,input,select,.panel')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>n.id||n.className)),[],'control overflow at '+width);if(width===1440||width===390)await page.screenshot({path:path.join(screenshotDir,'bridge-'+width+'.png'),fullPage:true});}
   await page.setViewportSize({width:1440,height:1000});
   await ui.getByRole('button',{name:'Einrichtung',exact:true}).click();await page.screenshot({path:path.join(screenshotDir,'setup.png'),fullPage:true});
+  await ui.locator('#check-bridge-update').click();await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
+  assert(calls.some(c=>c.path==='/api/update/check'));assert.equal(await ui.locator('#install-bridge-update').count(),1);
   await ui.locator('#enable-provision').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel')._hass.state.provision.active===true);
   assert((await ui.locator('#bridge-settings').textContent()).includes('192.168.8.1'));
   await ui.locator('#scan-lamp-hotspots').click();await ui.locator('#lamp-hotspot').selectOption('A8SE-FACTORY');
@@ -118,5 +124,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='firmware_check_all'));
   assert(await ui.locator('#check-lamp-updates').isEnabled());
+  page.once('dialog',dialog=>dialog.accept());await ui.locator('#install-bridge-update-banner').click();await page.waitForTimeout(100);
+  assert(calls.some(c=>c.path==='/api/update/install'));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

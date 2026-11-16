@@ -294,6 +294,7 @@ class ReefStudio:
             "name": self.hub.display_name,
             "labels": self.hub.labels,
             "local": self.hub.local,
+            "ip_address": getattr(self.hub.client, "ip", None) if self.hub.local else None,
             "online": self.hub.available and self.hub.has_state,
             "minute": now.hour * 60 + now.minute,
             "timezone": str(now.tzinfo),

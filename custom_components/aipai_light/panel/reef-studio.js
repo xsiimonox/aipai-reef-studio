@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.28.0";
+const REEF_STUDIO_VERSION = "0.28.1";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -195,7 +195,7 @@ class ReefStudioPanel extends HTMLElement {
     const payload = Array.isArray(lights) ? { lights, groups: [] } : lights;
     const signature = list => JSON.stringify(list.map(
       light => [
-        light.serial, light.name, light.labels, light.programs, light.scenes, light.local,
+        light.serial, light.name, light.labels, light.programs, light.scenes, light.local, light.ip_address,
         light.program, light.program_execution, light.startup_hold, light.scene, light.preview, light.activity, light.firmware,
         light.device_clock, light.device_timezone, light.open_hour, light.close_hour, light.native_timer_enabled,
         light.indicator_light, light.physical_resume,
@@ -302,7 +302,7 @@ class ReefStudioPanel extends HTMLElement {
       <header class="head"><div><div class="row"><ha-menu-button></ha-menu-button><div class="eyebrow">AIPAI / Aquarienbeleuchtung</div></div>
       <h1>AiPai Studio</h1><p class="muted">Tageslicht planen. Spektrum abstimmen. <span class="pill">v${REEF_STUDIO_VERSION}</span></p></div>
         ${light ? `<label class="field device-field">Lampe oder Gruppe<select id="lamp">${this.lights.map(item =>
-        `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}</option>`).join("")}</select></label>` : ""}
+        `<option value="${escape(item.serial)}" ${item === light ? "selected" : ""}>${item.group ? "Gruppe · " : ""}${escape(item.name)}${!item.group && item.ip_address ? ` · ${escape(item.ip_address)}` : ""}</option>`).join("")}</select></label>` : ""}
       </header><div id="notice" class="notice" role="status"></div>
       ${this.updateInfo?.available ? `<div class="update-note" role="status">Update verfügbar: <strong>v${escape(this.updateInfo.latest)}</strong> (installiert: v${escape(this.updateInfo.current)}). Bitte über HACS aktualisieren.</div>` : ""}
       ${light ? `<section class="mode-note" aria-live="polite"><span>Aktiver Lichtmodus</span><strong id="active-mode">${escape(mode)}</strong></section>` : ""}
@@ -402,7 +402,8 @@ class ReefStudioPanel extends HTMLElement {
     const temperature = light.temperature;
     const temperatureText = typeof temperature === "number" && Number.isFinite(temperature) ?
       ` · ${temperature.toFixed(1)} °C` : "";
-    this.$.querySelector("#online").textContent = light.online ? `Erreichbar${temperatureText}` : "Offline";
+    const ipText = !light.group && light.ip_address ? ` · ${light.ip_address}` : "";
+    this.$.querySelector("#online").textContent = light.online ? `Erreichbar${ipText}${temperatureText}` : `Offline${ipText}`;
     const actual = light.online ? (light.sent ?? light.reported) : null;
     const label = light.sent ? "Zuletzt an die Lampe gesendet" :
       light.program_execution === "device" ? "Aktuelle Pegel aus dem Lampenprogramm" :

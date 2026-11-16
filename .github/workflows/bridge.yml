@@ -32,6 +32,7 @@ jobs:
           cp reef-bridge/.pio/build/esp32dev/partitions.bin reef-bridge/installer/partitions.bin
           cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin reef-bridge/installer/boot_app0.bin
           cp reef-bridge/.pio/build/esp32dev/firmware.bin reef-bridge/installer/app.bin
+          python -c 'import hashlib,json,pathlib; p=pathlib.Path("reef-bridge/installer/app.bin"); m=pathlib.Path("reef-bridge/installer/bridge-update.json"); d=json.loads(m.read_text()); d["size"]=p.stat().st_size; d["sha256"]=hashlib.sha256(p.read_bytes()).hexdigest(); m.write_text(json.dumps(d,indent=2)+"\n")'
       - name: Assemble factory firmware
         run: |
           python -m esptool --chip esp32 merge_bin -o reef-bridge/installer/firmware.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 reef-bridge/.pio/build/esp32dev/bootloader.bin 0x8000 reef-bridge/.pio/build/esp32dev/partitions.bin 0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin 0x10000 reef-bridge/.pio/build/esp32dev/firmware.bin

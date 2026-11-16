@@ -1,6 +1,6 @@
 # AIPAI Reef Bridge für ESP32
 
-Firmware **0.10.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; die fabrikneue Lampenübernahme und der Betrieb mit mehreren echten Lampen benötigen noch einen Hardwaretest.
+Firmware **0.11.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesprogramme werden standardmäßig dauerhaft in den Lampen gespeichert; Home Assistant ist optional. Experimenteller Stand: Builds und simulierte Browsertests sind geprüft; die fabrikneue Lampenübernahme, OTA-Aktualisierung und der Betrieb mit mehreren echten Lampen benötigen noch einen Hardwaretest.
 
 ![AiPai Studio auf der Bridge](docs/bridge-desktop.png)
 
@@ -19,7 +19,7 @@ Firmware **0.10.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesp
 - Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
 - „Auf Lampe speichern & aktivieren“ überträgt jedes Tagesprogramm als 24 Stundenpunkte in den persistenten Speicher der ausgewählten Lampe(n). Die Lampen-Firmware interpoliert und führt es ohne Bridge, Home Assistant, Cloud oder Internet weiter. Jede Lampe hat einen eigenen aktiven Eintrag.
 - Temporäre Szenen 1–60 Minuten, dauerhafter manueller Modus, Countdown und Abbruch. Regler einer einzelnen Lampe starten eine Vorschau für eine Minute im Programmeditor bzw. fünf Minuten im Szeneneditor. Gruppen lassen sich über die Uhrzeit-Vorschau oder eine gespeicherte Szene ansehen.
-- Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft Firmware-Updates nach WLAN-Verbindung und alle sechs Stunden. Installation bewusst über den USB-Installer; OTA ist noch nicht implementiert.
+- Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft beim Öffnen, manuell und spätestens alle sechs Stunden auf Updates. Verfügbare Versionen lassen sich direkt im Webinterface installieren; HTTPS-Zertifikat, Zielversion, Dateigröße und SHA-256-Prüfsumme werden vor dem Neustart geprüft. USB bleibt als Wiederherstellungsweg verfügbar.
 - Ein Bridge-Neustart sendet keine Lichtwerte und schaltet keine Lampe ein. Bestehende Programme älterer Bridge-Versionen erscheinen einmalig im sicheren Haltemodus und müssen zum dauerhaften Speichern erneut aktiviert werden.
 
 „Synchron gehalten“ bedeutet: Beide Pakete bauen den Editor direkt aus `custom_components/aipai_light/panel/reef-studio.js`. Der Adapter enthält nur Bridge-Transport und Hardwareeinrichtung. Es gibt keine zweite Kopie der Layouts oder Editoren. CI prüft die Studio-Version und baut die Bridge auch bei Änderungen am gemeinsamen Panel. Bereits geflashte Geräte erhalten neue Funktionen erst mit einem Firmware-Update. Die Bibliotheken einer HA-Installation und einer Bridge werden **nicht automatisch über das Netz miteinander abgeglichen**.
@@ -32,7 +32,7 @@ Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**.
 2. Firmware installieren. Vor einem Update Backup herunterladen und **„Erase device“ nicht aktivieren**; der Browser-Installer erhält dann WLAN und AiPai-Studio-Daten. „Erase device“ nur für eine vollständige Neuinstallation verwenden.
 3. Mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
 4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.8.1** aufrufen. Kein API-Token nötig.
-5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Die neue Bridge-IP im Router öffnen; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
+5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Im Router meldet sich der Controller mit dem Hostnamen **ReefBridge**; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
 6. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
 7. Tagesprogramm grafisch erstellen, speichern und mit „Auf Lampe speichern & aktivieren“ für eine Lampe oder Gruppe übertragen. Dafür benötigt die Bridge einmalig eine gültige Netzwerkzeit. Vor Betrieb die Stundenkurve und gewünschten Kanalwerte prüfen.
 
