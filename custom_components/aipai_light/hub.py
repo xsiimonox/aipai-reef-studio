@@ -56,6 +56,7 @@ class AipaiLightHub:
         # output, without turning diagnostics into an unbounded memory sink.
         self.activity = deque(maxlen=500)
         self.indicator_light = None  # No readback field exists in the vendor app.
+        self.physical_resume = None  # turnoffset is command-only in APK 3.1.93.
         self._poll_interval = max(10, int(poll_interval))
         self._connected = False
         self._last_reply = 0.0  # monotonic time of the last device reply
@@ -154,6 +155,28 @@ class AipaiLightHub:
             raise
         self.indicator_light = enabled
         self.log_activity("Tastenbeleuchtung gesendet", "Ein" if enabled else "Aus")
+        self._notify()
+
+    async def async_set_physical_resume(self, enabled: bool) -> None:
+        """Set whether the stored profile resumes after a physical off action."""
+        if type(enabled) is not bool:
+            raise ValueError("Profilfortsetzung erwartet Ein oder Aus.")
+        if not self.local or not self.available:
+            raise OSError("Die Lampe ist nicht lokal erreichbar.")
+
+        async def prepare(_body):
+            # APK 3.1.93 ctrl-light.html turnoffset(): 1 resumes the app/device
+            # settings after a physical off action; 0 leaves the lamp off.
+            return ["turnoffset=" + ("1" if enabled else "0")]
+
+        try:
+            await self.client.async_studio_exchange(prepare)
+        except (OSError, ValueError) as err:
+            self.log_activity("Verhalten nach Tastendruck fehlgeschlagen", str(err), "error")
+            raise
+        self.physical_resume = enabled
+        detail = "Gespeichertes Profil fortsetzen" if enabled else "Nach Ausschalten aus bleiben"
+        self.log_activity("Verhalten nach physischem Ausschalten gesendet", detail)
         self._notify()
 
     async def async_connect(self) -> None:

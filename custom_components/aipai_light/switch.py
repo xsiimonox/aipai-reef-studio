@@ -33,7 +33,7 @@ async def async_setup_entry(
     hub = hass.data[DOMAIN][entry.entry_id]
     if isinstance(hub, AipaiLightHub):
         if hub.local:
-            async_add_entities([AipaiIndicatorSwitch(hub)])
+            async_add_entities([AipaiIndicatorSwitch(hub), AipaiPhysicalResumeSwitch(hub)])
         return  # AiPai Studio replaces the legacy light switches.
     from .experimental import ExperimentalDeviceHub
     from .experimental_entities import build_entities
@@ -69,6 +69,35 @@ class AipaiIndicatorSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._hub.async_set_indicator_light(False)
+
+
+class AipaiPhysicalResumeSwitch(SwitchEntity):
+    """Optimistic turnoffset control; no state field exists in readconfig."""
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_name = "Profil nach physischem Ausschalten fortsetzen"
+    _attr_icon = "mdi:restart"
+    _attr_assumed_state = True
+
+    def __init__(self, hub: AipaiLightHub) -> None:
+        self._hub = hub
+        self._attr_unique_id = f"{hub.serial}_physical_resume"
+        self._attr_device_info = hub.device_info
+        hub.register_entity(self)
+
+    @property
+    def available(self) -> bool:
+        return self._hub.local and self._hub.available
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._hub.physical_resume
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._hub.async_set_physical_resume(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._hub.async_set_physical_resume(False)
 
 
 class AipaiMasterSwitch(SwitchEntity):

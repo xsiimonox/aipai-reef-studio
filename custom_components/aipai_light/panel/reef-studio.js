@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.27.1";
+const REEF_STUDIO_VERSION = "0.28.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -197,6 +197,8 @@ class ReefStudioPanel extends HTMLElement {
       light => [
         light.serial, light.name, light.labels, light.programs, light.scenes, light.local,
         light.program, light.program_execution, light.startup_hold, light.scene, light.preview, light.activity, light.firmware,
+        light.device_clock, light.device_timezone, light.open_hour, light.close_hour, light.native_timer_enabled,
+        light.indicator_light, light.physical_resume,
       ]
     ));
     const changed = signature([...payload.lights, ...payload.groups]) !== signature(this.lights) ||
@@ -418,15 +420,21 @@ class ReefStudioPanel extends HTMLElement {
       scene && ["resume", "Szene abbrechen – Tagesprogramm fortsetzen"],
       !light.preview && (light.scene || light.restoring || (light.program && light.program_execution !== "device")) && ["release", "Lampeneigenen Modus wiederherstellen"],
     ].filter(Boolean);
-    const signature = JSON.stringify([buttons, light.indicator_light, light.group]);
+    const signature = JSON.stringify([buttons, light.indicator_light, light.physical_resume, light.group]);
     if (control.dataset.buttons !== signature) {
       control.dataset.buttons = signature;
       control.innerHTML = buttons.map(([action, name]) => `<button data-action="${action}">${name}</button>`).join("") +
-        `<div><strong>Tastenbeleuchtung · A8 SE</strong><p class="muted">${light.indicator_light === true ? 'Zuletzt gesendet: Ein' : light.indicator_light === false ? 'Zuletzt gesendet: Aus' : 'Zustand unbekannt / uneinheitlich'}</p><div class="row"><button data-indicator="true">Tastenbeleuchtung ein</button><button data-indicator="false">Tastenbeleuchtung aus</button></div><small>PilotLamp · ${light.group ? 'für alle Gruppenlampen. ' : ''}Kein ausgelesener Istzustand. Andere Modelle können den Befehl ignorieren.</small></div>`;
-      control.querySelectorAll("button").forEach(button => { button.onclick = () => button.dataset.indicator === undefined ? this.send(button.dataset.action) : this.send('indicator', {enabled: button.dataset.indicator === 'true'}); });
+        `<div><strong>Tastenbeleuchtung · A8 SE</strong><p class="muted">${light.indicator_light === true ? 'Zuletzt gesendet: Ein' : light.indicator_light === false ? 'Zuletzt gesendet: Aus' : 'Zustand unbekannt / uneinheitlich'}</p><div class="row"><button data-indicator="true">Tastenbeleuchtung ein</button><button data-indicator="false">Tastenbeleuchtung aus</button></div><small>PilotLamp · ${light.group ? 'für alle Gruppenlampen. ' : ''}Kein ausgelesener Istzustand. Andere Modelle können den Befehl ignorieren.</small></div>
+        <div><strong>Nach physischem Ausschalten</strong><p class="muted">${light.physical_resume === true ? 'Zuletzt gesendet: Profil fortsetzen' : light.physical_resume === false ? 'Zuletzt gesendet: Aus bleiben' : 'Zustand unbekannt / uneinheitlich'}</p><div class="row"><button data-physical-resume="true">Profil fortsetzen</button><button data-physical-resume="false">Aus bleiben</button></div><small>Herstellerbefehl turnoffset · ${light.group ? 'für alle Gruppenlampen. ' : ''}Dies sperrt die Tasten nicht; es legt nur die Reaktion nach dem Ausschalten an Taste oder Drehknopf fest. Kein ausgelesener Istzustand.</small></div>`;
+      control.querySelectorAll("button").forEach(button => { button.onclick = () => {
+        if (button.dataset.indicator !== undefined) this.send('indicator', {enabled: button.dataset.indicator === 'true'});
+        else if (button.dataset.physicalResume !== undefined) this.send('physical_resume', {enabled: button.dataset.physicalResume === 'true'});
+        else this.send(button.dataset.action);
+      }; });
     }
     control.querySelectorAll("button").forEach(button => { button.disabled = this.busy || !light.local; });
     control.querySelectorAll("[data-indicator]").forEach(button => { button.disabled = this.busy || !light.local || !light.online; });
+    control.querySelectorAll("[data-physical-resume]").forEach(button => { button.disabled = this.busy || !light.local || !light.online; });
     this.$.querySelectorAll("[data-live]").forEach(button => {
       button.disabled = this.busy || !light.local || !light.online;
     });
@@ -569,7 +577,8 @@ class ReefStudioPanel extends HTMLElement {
     const text = header + events.map(event => `[${event.at}] ${(event.level || 'info').toUpperCase()} · ${event.event}${event.detail ? " — " + event.detail : ""}`).join("\n") + "\n\n" + JSON.stringify(report, null, 2);
     node.innerHTML = `<div class="row spread"><div><h2>Diagnoseprotokoll</h2><p class="muted">Die letzten ${events.length} Ereignisse dieser Home-Assistant-Sitzung (maximal 500). Erfasst Steueraktionen, Studio-Ausgaben, Statuswechsel, Verbindungswechsel und Fehler.</p></div>
       <div class="row"><button id="download-log">Diagnose herunterladen</button><button id="copy-log">Diagnoseexport kopieren</button></div></div>
-      <p class="muted">Enthält Status, Programme und Ereignisse aller Lampen. Verlauf ab Start dieser Sitzung; bitte vor einem Neustart exportieren. Lokale Lampenkurven besitzen nur stündliche Stützpunkte; Vorschauen berechnen das Originalprofil minutengenau. Native Schaltzeiten werden beim Speichern auf 00–23 Uhr gesetzt; Verhalten nach 23 Uhr bitte anhand der Lampen-Firmware prüfen.</p>
+      <p class="muted">Enthält Status, Programme und Ereignisse aller Lampen. Verlauf ab Start dieser Sitzung; bitte vor einem Neustart exportieren. Lokale Lampenkurven besitzen nur stündliche Stützpunkte; Vorschauen berechnen das Originalprofil minutengenau. Beim Speichern setzt AiPai Studio den separaten Ein-/Ausschalt-Timer auf 00–00 (aus); die 24-Stunden-Kurve läuft einschließlich des Übergangs 23→00 Uhr.</p>
+      ${this.light.native_timer_enabled ? `<p class="notice">Achtung: In dieser Lampe ist noch ein nativer Zusatz-Schalttimer aktiv (${String(this.light.open_hour).padStart(2, '0')}:00–${String(this.light.close_hour).padStart(2, '0')}:00). Speichere das Tagesprogramm erneut auf die Lampe, damit dieser alte Timer deaktiviert wird.</p>` : ''}
       ${events.length ? `<ul class="log">${events.map(event => `<li class="${escape(event.level)}"><time>${escape(event.at)}</time><strong>${escape(event.event)}</strong>${event.detail ? `<br><small>${escape(event.detail)}</small>` : ""}</li>`).join("")}</ul>` : '<p class="muted">Noch keine Ereignisse protokolliert.</p>'}`;
     const copy = node.querySelector("#copy-log");
     node.querySelector("#download-log").onclick = () => {

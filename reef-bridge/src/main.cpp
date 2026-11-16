@@ -23,6 +23,7 @@ const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 struct Lamp {
   String mode="firmware", scene, error;
   int indicatorLight=-1; // Last command only; no vendor readback is documented.
+  int physicalResume=-1; // Last turnoffset command only; no readback is documented.
   String fwCurrent,fwLatest,fwVendorModel,fwNotes,fwError;
   uint32_t fwAttempt=0;time_t fwChecked=0;bool fwQueried=false,fwAvailable=false;
   int levels[8]={}, sent[8]={}, previewLevels[8]={};
@@ -225,13 +226,13 @@ bool deployProgram(int i,String id) {
     String row;
     for(int hour=0;hour<24;hour++){
       if(!programLevels(points,hour*60,target,physical)){lamp.error="Tagesprogramm kann nicht interpoliert werden";return false;}
-      if(hour==23&&j<physical&&target[j]>0){lamp.error="Licht nach 23 Uhr benötigt externe Zeitplansteuerung; native Schaltzeit unbestätigt";return false;}
       if(hour)row+='y';row+=String(j<physical?target[j]:0);
     }
     query+="x"+row;
   }
-  for(JsonObject point:points)if(point["minute"].as<int>()>=1380)for(JsonVariant level:point["levels"].as<JsonArray>())if(level.as<int>()>0){lamp.error="Licht nach 23 Uhr benötigt externe Zeitplansteuerung";return false;}
-  query+="x0x23x"+fields[23+2*(roads-6)];
+  // APK 3.1.93 disables the separate on/off timer with 0/0. A close value
+  // of 23 really switches the fixture off and must not delimit the curve.
+  query+="x0x0x"+fields[23+2*(roads-6)];
   String reply;if(!fetch(i,query,reply))return false;
   // Keep the autonomous schedule aligned with this fixture's own timezone,
   // including DST even though the lamp stores only a whole-hour UTC offset.
@@ -248,7 +249,7 @@ bool deployProgram(int i,String id) {
   int delta=abs(hour*60+minute-local.tm_hour*60-local.tm_min);
   if(parsed!=2||hour<0||hour>23||minute<0||minute>59||min(delta,1440-delta)>2){lamp.error="Lampenuhr stimmt nach Synchronisierung nicht";return false;}
   lamp.mode="firmware";lamp.scene="";lamp.until=lamp.previewEnd=0;lamp.releaseRequested=false;lamp.force=false;lamp.online=true;lamp.error="";
-  logEvent(i,"Tagesprogramm dauerhaft auf Lampe gespeichert: "+id);return true;
+  logEvent(i,"Tagesprogramm dauerhaft gespeichert; Zusatz-Schalttimer 0–0 (aus): "+id);return true;
 }
 void output(int i) {
   Lamp& lamp=lamps[i];if(WiFi.status()!=WL_CONNECTED)return;int target[8]={};bool hasTarget=desired(i,target);
@@ -313,7 +314,9 @@ void status() {
     expire(i);Lamp& lamp=lamps[i];JsonObject state=lights.createNestedObject();tm local;clockFor(i,local);
     state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
     state["power"]=lamp.power;state["device_clock"]=lamp.deviceClock;state["device_timezone"]=lamp.deviceTimezone;state["open_hour"]=lamp.openHour;state["close_hour"]=lamp.closeHour;
+    state["native_timer_enabled"]=lamp.openHour||lamp.closeHour;
     if(lamp.indicatorLight<0)state["indicator_light"]=nullptr;else state["indicator_light"]=lamp.indicatorLight==1;
+    if(lamp.physicalResume<0)state["physical_resume"]=nullptr;else state["physical_resume"]=lamp.physicalResume==1;
     JsonObject fw=state.createNestedObject("firmware");fw["source"]="manufacturer_http";fw["local_version"]=nullptr;fw["install_allowed"]=false;fw["block_reason"]="Installation gesperrt: Herstellerweg ohne belegte Firmware-Signaturprüfung und ohne verifizierte lokale Versionskontrolle.";
     if(lamp.fwCurrent.length())fw["manufacturer_version"]=lamp.fwCurrent;if(lamp.fwLatest.length())fw["latest"]=lamp.fwLatest;fw["vendor_model"]=lamp.fwVendorModel;fw["notes"]=lamp.fwNotes;fw["error"]=lamp.fwError;
     if(lamp.fwQueried&&!lamp.fwError.length())fw["available"]=lamp.fwAvailable;else fw["available"]=nullptr;
@@ -382,6 +385,16 @@ void studio(JsonDocument& msg) {
       bool enabled=msg["enabled"].as<bool>();
       if(!fetch(i,enabled?"mculed=on":"mculed=off",reply)){logEvent(i,"Tastenbeleuchtung fehlgeschlagen");fail(lamps[i].error);return;}
       lamps[i].indicatorLight=enabled?1:0;logEvent(i,enabled?"Tastenbeleuchtung Ein gesendet":"Tastenbeleuchtung Aus gesendet");
+    }ok();return;
+  }
+  if(action=="physical_resume"){
+    if(!msg["enabled"].is<bool>()){fail("Profilfortsetzung erwartet Ein oder Aus");return;}
+    for(int i=0;i<count();i++)if(targets[i]){
+      String fields[32],reply;int n;
+      if(!lampState(i,fields,n)){fail("Lampenidentität für Tastenverhalten nicht bestätigt");return;}
+      bool enabled=msg["enabled"].as<bool>();
+      if(!fetch(i,enabled?"turnoffset=1":"turnoffset=0",reply)){logEvent(i,"Tastenverhalten fehlgeschlagen");fail(lamps[i].error);return;}
+      lamps[i].physicalResume=enabled?1:0;logEvent(i,enabled?"Profil nach physischem Ausschalten fortsetzen":"Nach physischem Ausschalten aus bleiben");
     }ok();return;
   }
   if(action=="activate"||action=="manual"){

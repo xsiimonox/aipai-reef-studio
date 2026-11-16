@@ -1,5 +1,11 @@
 # Reef Bridge Changelog
 
+## [0.9.0] - 2026-11-16
+
+- Native Lampenprogramme deaktivieren den separaten Ein-/Ausschalt-Timer mit `00–00` und unterstützen Licht nach 23 Uhr sowie den Kurvenübergang über Mitternacht. Der frühere Wert `00–23` konnte Lampen real um 23 Uhr abschalten.
+- Neuer Gruppenbefehl `turnoffset`: gespeichertes Profil nach einem physischen Ausschalten fortsetzen oder ausgeschaltet bleiben. Der Status ist optimistisch, da die Lampe diese Einstellung nicht zurückmeldet.
+- Diagnose kennzeichnet alte, noch aktive Zusatz-Schalttimer und erklärt die Korrektur durch erneutes Speichern.
+
 ## [0.8.1] - 2026-11-16
 
 - Gemeinsamer „Updates prüfen“-Button für alle Lampen, kompakte Versionszeilen mit aufklappbaren Details. Vorhandene Resultate innerhalb der einminütigen Abfragesperre bleiben erhalten. Die Firmwareinstallation bleibt gesperrt.

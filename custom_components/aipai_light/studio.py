@@ -301,10 +301,12 @@ class ReefStudio:
             "mode": state.mode,
             "device_clock": state.clock,
             "indicator_light": self.hub.indicator_light,
+            "physical_resume": self.hub.physical_resume,
             "firmware": dict(self.firmware.data),
             "device_timezone": state.timezone,
             "open_hour": state.open_hour,
             "close_hour": state.close_hour,
+            "native_timer_enabled": bool(state.open_hour or state.close_hour),
             "power": state.power,
             "temperature": state.temperature,
             "reported": state.road_val_pct[:self.hub.roads] if self.hub.has_state else [],
@@ -473,11 +475,10 @@ class ReefStudio:
             if state.power != "on":
                 raise ValueError("Bitte die Lampe vor dem Speichern einschalten.")
             rows = firmware_schedule_rows(program["points"], self.hub.roads, state.roads_real)
-            if any(any(point["levels"]) and point["minute"] >= 1380 for point in program["points"]) or any(int(row.split(",")[23]) for row in rows):
-                raise ValueError("Licht nach 23 Uhr: Die native Schaltzeit ist nur für 0–23 Uhr bestätigt. Bitte das native Profil spätestens um 23 Uhr beenden.")
-            # The hourly curve defines darkness; stale vendor timers must not
-            # truncate a newly installed day profile. Use the documented hour range.
-            deployed = replace(state, mode="1", road_data=rows, open_hour=0, close_hour=23)
+            # APK 3.1.93 treats 0/0 as a disabled auxiliary on/off timer. 23 is
+            # a real switch-off hour, not the end marker of the hourly curve.
+            # The curve itself interpolates circularly from hour 23 to hour 0.
+            deployed = replace(state, mode="1", road_data=rows, open_hour=0, close_hour=0)
             tokens = build_saveconfig(deployed).split("x")
             # Preserve the live fan thresholds reported by this exact fixture.
             tokens[2:5] = [field.strip() for field in fields[2:5]]
@@ -497,7 +498,7 @@ class ReefStudio:
         self.error = None
         self.hub.log_activity(
             "Tagesprogramm auf Lampe gespeichert",
-            f"{program['name']}; 24 Stundenpunkte; lampeneigener Automatikmodus",
+            f"{program['name']}; 24 Stundenpunkte; Zusatz-Schalttimer 0–0 (aus); lampeneigener Automatikmodus",
         )
 
     async def command(self, msg: dict) -> None:
@@ -515,6 +516,11 @@ class ReefStudio:
                 if type(msg.get("enabled")) is not bool:
                     raise ValueError("Bitte Ein oder Aus für die Tastenbeleuchtung angeben.")
                 await self.hub.async_set_indicator_light(msg["enabled"])
+                return
+            if action == "physical_resume":
+                if type(msg.get("enabled")) is not bool:
+                    raise ValueError("Bitte Ein oder Aus für das Fortsetzen nach Tastendruck angeben.")
+                await self.hub.async_set_physical_resume(msg["enabled"])
                 return
             kind = msg.get("kind", "programs")
             item_id = msg.get("item_id")
@@ -646,7 +652,7 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator", "firmware_check", "firmware_install", "firmware_check_all",
+        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator", "physical_resume", "firmware_check", "firmware_install", "firmware_check_all",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),

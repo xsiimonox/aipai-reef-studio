@@ -15,7 +15,7 @@ method = next(n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.n
 
 class VerifiedExchangeTests(unittest.IsolatedAsyncioTestCase):
     async def exchange(self, *, mismatch=False, clock="12,00", serial="demo", mode="1"):
-        expected = "onx1x35x30x80x50x0x23x1"
+        expected = "onx1x35x30x80x50x0x0x1"
         state = SimpleNamespace(serial=serial, mode=mode, clock=clock, timezone="1")
         ns = {"extract_config_body": lambda raw: raw,
               "parse_readconfig": lambda raw: state,

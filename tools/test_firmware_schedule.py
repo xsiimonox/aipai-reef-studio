@@ -67,6 +67,18 @@ class FirmwareScheduleTests(unittest.TestCase):
         self.assertEqual(set(rows[6].split(",")), {"0"})
         self.assertEqual(set(rows[7].split(",")), {"0"})
 
+    def test_curve_keeps_light_after_23_and_wraps_to_midnight(self):
+        points = [
+            {"minute": 0, "levels": [80] * 6},
+            {"minute": 60, "levels": [0] * 6},
+            {"minute": 1320, "levels": [0] * 6},
+            {"minute": 1380, "levels": [100] * 6},
+        ]
+        rows = firmware_schedule_rows(points, 6, 6)
+        white = [int(value) for value in rows[0].split(",")]
+        self.assertEqual(white[23], 100)
+        self.assertEqual(white[0], 80)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.0] - 2026-11-16
+
+### Fixed
+
+- Native Tagesprogramme setzen den separaten Ein-/Ausschalt-Timer jetzt auf `00–00` (aus). APK 3.1.93 bestätigt, dass der bisherige Endwert 23 eine echte Abschaltung um 23 Uhr auslöst. Profile dürfen nun über 23 Uhr und Mitternacht laufen; Kurve und deaktivierter Timer werden zurückgelesen und geprüft.
+- Der Diagnosebereich warnt vor noch vorhandenen Zusatz-Schaltzeiten und fordert zum erneuten Speichern des Tagesprogramms auf.
+
+### Added
+
+- Steuerung „Profil nach physischem Ausschalten fortsetzen“ als Studio-Gruppenaktion und eigene Home-Assistant-Entität. Der belegte Befehl `turnoffset=0|1` wird korrekt als Verhalten nach Taste/Drehknopf bezeichnet, nicht als Tastensperre; Anzeige nur als zuletzt gesendeter Wert.
+- Dokumentierte APK-Erkenntnisse zu Uhrzeit, Zeitzone, nativen Kurven, fabrikneuer WLAN-Einrichtung, Statusfeldern und Hersteller-Gruppen.
+
 ## [0.27.1] - 2026-11-16
 
 ### Changed

@@ -87,6 +87,7 @@ class ReefGroups:
                 "programs": shared("programs"), "scenes": shared("scenes"), "program": program,
                 "program_execution": program_execution,
                 "indicator_light": getattr(members[0].hub, "indicator_light", None) if all(getattr(studio.hub, "indicator_light", None) == getattr(members[0].hub, "indicator_light", None) for studio in members) else None,
+                "physical_resume": getattr(members[0].hub, "physical_resume", None) if all(getattr(studio.hub, "physical_resume", None) == getattr(members[0].hub, "physical_resume", None) for studio in members) else None,
                 "startup_hold": any(studio.startup_hold for studio in members),
                 "scene": scene, "preview": preview, "sent": None, "sent_at": None, "error": None, "group": True,
             })

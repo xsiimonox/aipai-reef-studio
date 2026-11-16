@@ -9,9 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 source = ROOT / "custom_components/aipai_light/hub.py"
 tree = ast.parse(source.read_text())
 cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "AipaiLightHub")
-method = next(n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "async_set_indicator_light")
+methods = [n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name in {
+    "async_set_indicator_light", "async_set_physical_resume",
+}]
 namespace = {}
-exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
 
 class IndicatorTests(unittest.IsolatedAsyncioTestCase):
@@ -21,7 +23,7 @@ class IndicatorTests(unittest.IsolatedAsyncioTestCase):
             commands.extend(await prepare("verified config"))
             if fail:
                 raise OSError("No reply")
-        return SimpleNamespace(local=True, available=True, indicator_light=None,
+        return SimpleNamespace(local=True, available=True, indicator_light=None, physical_resume=None,
                                client=SimpleNamespace(async_studio_exchange=exchange),
                                log_activity=Mock(), _notify=Mock()), commands
 
@@ -37,6 +39,13 @@ class IndicatorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(OSError):
             await namespace["async_set_indicator_light"](hub, False)
         self.assertIsNone(hub.indicator_light)
+
+    async def test_physical_off_followup_uses_documented_turnoffset(self):
+        hub, commands = self.hub()
+        for enabled in (False, True):
+            await namespace["async_set_physical_resume"](hub, enabled)
+            self.assertIs(hub.physical_resume, enabled)
+        self.assertEqual(commands, ["turnoffset=0", "turnoffset=1"])
 
     async def test_offline_or_invalid_requests_do_not_write(self):
         hub, commands = self.hub()

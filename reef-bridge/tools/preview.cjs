@@ -95,6 +95,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('[data-indicator="false"]').click();
   await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='indicator'&&c.body.enabled===false&&c.body.serial==='group:group1'));
+  await ui.locator('[data-physical-resume="true"]').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
+  assert(calls.some(c=>c.body.action==='physical_resume'&&c.body.enabled===true&&c.body.serial==='group:group1'));
   await ui.locator('[data-tab=firmware]').click();
   assert.equal(await ui.locator('#check-lamp-updates').count(),1);
   assert.equal(await ui.locator('[data-firmware-check]').count(),0);

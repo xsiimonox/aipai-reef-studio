@@ -23,6 +23,12 @@ class MixedGroupTests(unittest.IsolatedAsyncioTestCase):
         for studio in studios.values():
             self.assertEqual(studio.command.call_args.args[0], {"action": "indicator", "enabled": False})
 
+    async def test_physical_resume_targets_each_fixture(self):
+        group, studios = self.setup_group([6, 8])
+        await group.command("reef", {"action": "physical_resume", "enabled": True})
+        for studio in studios.values():
+            self.assertEqual(studio.command.call_args.args[0], {"action": "physical_resume", "enabled": True})
+
     def setup_group(self, counts):
         studios = {}
         for index, count in enumerate(counts):
