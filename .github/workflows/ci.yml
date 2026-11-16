@@ -31,6 +31,8 @@ jobs:
         run: python tools/test_verified_exchange.py
       - name: Check dedicated PilotLamp commands
         run: python tools/test_indicator_light.py
+      - name: Check firmware metadata and fail-closed installation
+        run: python tools/test_lamp_firmware.py
       - name: Compile Python integration
         run: python -m compileall -q custom_components/aipai_light tools
       - name: Validate AiPai Studio JavaScript

@@ -23,6 +23,8 @@ const char* defaultZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 struct Lamp {
   String mode="firmware", scene, error;
   int indicatorLight=-1; // Last command only; no vendor readback is documented.
+  String fwCurrent,fwLatest,fwVendorModel,fwNotes,fwError;
+  uint32_t fwAttempt=0;time_t fwChecked=0;bool fwQueried=false,fwAvailable=false;
   int levels[8]={}, sent[8]={}, previewLevels[8]={};
   uint32_t until=0, previewEnd=0, lastOutput=0, lastClockSync=0;
   bool online=false, force=true, releaseRequested=false;
@@ -274,8 +276,36 @@ void output(int i) {
   if(lamp.releaseRequested){lamp.mode="firmware";lamp.releaseRequested=false;}else for(int j=0;j<channels(i);j++)lamp.sent[j]=target[j];lamp.error="";
 }
 double deadline(uint32_t end) {return end&&!expired(end)?double(time(nullptr))+double(end-millis())/1000:0;}
+bool fwIdentifier(String value){if(!value.length()||value.length()>64)return false;for(size_t j=0;j<value.length();j++)if(!isalnum((unsigned char)value[j])&&value[j]!='-'&&value[j]!='_')return false;return true;}
+bool fwVersion(String value){int dots=0,digits=0;for(size_t j=0;j<value.length();j++){char c=value[j];if(c=='.'){if(!digits||++dots>3)return false;digits=0;}else if(c<'0'||c>'9'||++digits>10)return false;}return digits>0;}
+int fwCompare(String a,String b){for(int part=0;part<4;part++){int ea=a.indexOf('.'),eb=b.indexOf('.');String x=ea<0?a:a.substring(0,ea),y=eb<0?b:b.substring(0,eb);uint64_t vx=strtoull(x.c_str(),nullptr,10),vy=strtoull(y.c_str(),nullptr,10);if(vx!=vy)return vx>vy?1:-1;a=ea<0?"":a.substring(ea+1);b=eb<0?"":b.substring(eb+1);}return 0;}
+String fwEncode(String text){String result;const char* hex="0123456789ABCDEF";for(size_t j=0;j<text.length();j++){unsigned char c=text[j];if(isalnum(c)||c=='-'||c=='_')result+=char(c);else{result+='%';result+=hex[c>>4];result+=hex[c&15];}}return result;}
+class FirmwareBuffer:public Stream{
+ public:String data;bool overflow=false;
+ int available()override{return 0;}int read()override{return -1;}int peek()override{return -1;}void flush()override{}
+ size_t write(uint8_t c)override{return write(&c,1);}
+ size_t write(const uint8_t* buffer,size_t size)override{if(data.length()+size>8192){overflow=true;return 0;}data.concat((const char*)buffer,size);return size;}
+};
+bool fwQuery(String sql,DynamicJsonDocument& data){
+ HTTPClient http;http.setConnectTimeout(1500);http.setTimeout(4000);http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+ if(!http.begin("http://ahome.doseen.com/api.ashx?action=data_read&sql="+fwEncode(sql)))return false;
+ int code=http.GET();FirmwareBuffer buffer;int read=code==200?http.writeToStream(&buffer):-1;http.end();
+ return code==200&&read>=0&&!buffer.overflow&&!deserializeJson(data,buffer.data)&&data.is<JsonArray>()&&data.size()==1;
+}
+void checkLampFirmware(int i){
+ Lamp& lamp=lamps[i];if(lamp.fwQueried&&millis()-lamp.fwAttempt<60000){fail("Bitte eine Minute zwischen Herstellerabfragen warten");return;}
+ lamp.fwAttempt=millis();lamp.fwQueried=true;lamp.fwCurrent="";lamp.fwLatest="";lamp.fwVendorModel="";lamp.fwNotes="";lamp.fwError="Herstellerabfrage fehlgeschlagen oder Antwort ungültig";lamp.fwAvailable=false;lamp.fwChecked=time(nullptr);
+ String serial=workspace["lamps"][i]["serial"]|"";DynamicJsonDocument device(12288),release(12288);
+ if(fwIdentifier(serial)&&fwQuery("select d_sn,d_class,d_ver from tbl_device where d_sn='"+serial+"'",device)&&device[0]["d_sn"].as<String>()==serial){
+  String model=device[0]["d_class"]|"",current=device[0]["d_ver"].as<String>();
+  if(fwIdentifier(model)&&fwVersion(current)&&fwQuery("select classname,status,remark from tbl_class where classname='"+model+"'",release)&&release[0]["classname"].as<String>()==model){
+   String latest=release[0]["status"].as<String>();if(fwVersion(latest)){lamp.fwCurrent=current;lamp.fwLatest=latest;lamp.fwVendorModel=model;lamp.fwNotes=release[0]["remark"].as<String>().substring(0,512);lamp.fwAvailable=fwCompare(latest,current)>0;lamp.fwError="";}
+  }
+ }
+ logEvent(i,lamp.fwError.length()?lamp.fwError:"Hersteller meldet Firmware "+lamp.fwCurrent+"; neueste "+lamp.fwLatest+"; nicht lokal bestätigt");ok();
+}
 void status() {
-  DynamicJsonDocument doc(48000);
+  DynamicJsonDocument doc(56000);
   doc["version"]=BRIDGE_VERSION;doc["now_epoch"]=double(time(nullptr));doc["clock_valid"]=time(nullptr)>=1700000000;doc["ip"]=WiFi.localIP().toString();
   JsonObject update=doc.createNestedObject("update");update["available"]=updateAvailable;update["latest"]=latestVersion;update["installer_url"]=installerUrl;update["error"]=updateError;
   JsonArray lights=doc.createNestedArray("lights");
@@ -284,6 +314,10 @@ void status() {
     state["minute"]=local.tm_hour*60+local.tm_min;state["online"]=lamp.online;state["mode"]=lamp.mode;state["power"]="on";state["error"]=lamp.error;
     state["power"]=lamp.power;state["device_clock"]=lamp.deviceClock;state["device_timezone"]=lamp.deviceTimezone;state["open_hour"]=lamp.openHour;state["close_hour"]=lamp.closeHour;
     if(lamp.indicatorLight<0)state["indicator_light"]=nullptr;else state["indicator_light"]=lamp.indicatorLight==1;
+    JsonObject fw=state.createNestedObject("firmware");fw["source"]="manufacturer_http";fw["local_version"]=nullptr;fw["install_allowed"]=false;fw["block_reason"]="Installation gesperrt: Herstellerweg ohne belegte Firmware-Signaturprüfung und ohne verifizierte lokale Versionskontrolle.";
+    if(lamp.fwCurrent.length())fw["manufacturer_version"]=lamp.fwCurrent;if(lamp.fwLatest.length())fw["latest"]=lamp.fwLatest;fw["vendor_model"]=lamp.fwVendorModel;fw["notes"]=lamp.fwNotes;fw["error"]=lamp.fwError;
+    if(lamp.fwQueried&&!lamp.fwError.length())fw["available"]=lamp.fwAvailable;else fw["available"]=nullptr;
+    if(lamp.fwChecked>=1700000000){char stamp[32];tm utc;gmtime_r(&lamp.fwChecked,&utc);strftime(stamp,sizeof(stamp),"%Y-%m-%dT%H:%M:%SZ",&utc);fw["checked_at"]=stamp;}
     String program=workspace["lamps"][i]["program"]|"",execution=workspace["lamps"][i]["program_execution"]|"hold";
     if(program.length())state["program"]=program;state["program_execution"]=execution;state["startup_hold"]=program.length()&&execution!="device";
     if(isfinite(lamp.temperature))state["temperature"]=lamp.temperature;
@@ -334,6 +368,11 @@ void studio(JsonDocument& msg) {
     }return;
   }
   if(!targetCount){fail("Lampe nicht gefunden");return;}
+  if(action=="firmware_install"){fail("Installation gesperrt: keine verifizierte Firmware-Signatur oder lokale Versionskontrolle");return;}
+  if(action=="firmware_check"){
+    if(serial.startsWith("group:")||targetCount!=1){fail("Firmwareprüfung nur für einzelne Lampen");return;}
+    for(int i=0;i<count();i++)if(targets[i]){checkLampFirmware(i);return;}
+  }
   if(action=="indicator"){
     if(!msg["enabled"].is<bool>()){fail("Tastenbeleuchtung erwartet Ein oder Aus");return;}
     for(int i=0;i<count();i++)if(targets[i]){

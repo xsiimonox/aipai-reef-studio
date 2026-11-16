@@ -209,6 +209,8 @@ class ReefStudio:
 
     def __init__(self, hub: AipaiLightHub) -> None:
         self.hub = hub
+        from .lamp_firmware import LampFirmware
+        self.firmware = LampFirmware(hub)
         self.store = Store(hub.hass, 1, f"{DOMAIN}.studio.{hub.serial}")
         self.data = {
             "programs": {}, "scenes": {}, "program": None, "scene": None,
@@ -299,6 +301,7 @@ class ReefStudio:
             "mode": state.mode,
             "device_clock": state.clock,
             "indicator_light": self.hub.indicator_light,
+            "firmware": dict(self.firmware.data),
             "device_timezone": state.timezone,
             "open_hour": state.open_hour,
             "close_hour": state.close_hour,
@@ -502,6 +505,12 @@ class ReefStudio:
             if self.closed:
                 raise ValueError("Die Integration wird gerade neu geladen.")
             action = msg["action"]
+            if action == "firmware_check":
+                await self.firmware.check()
+                return
+            if action == "firmware_install":
+                await self.firmware.install()
+                return
             if action == "indicator":
                 if type(msg.get("enabled")) is not bool:
                     raise ValueError("Bitte Ein oder Aus für die Tastenbeleuchtung angeben.")
@@ -637,7 +646,7 @@ def register_studio_api(hass) -> None:
 @websocket_api.websocket_command({
     vol.Required("type"): "aipai_light/studio",
     vol.Required("action"): vol.In((
-        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator",
+        "list", "save", "delete", "activate", "manual", "preview", "preview_cancel", "resume", "release", "group_save", "group_delete", "indicator", "firmware_check", "firmware_install",
     )),
     vol.Optional("serial"): str,
     vol.Optional("kind"): vol.In(("programs", "scenes")),
@@ -674,6 +683,8 @@ async def studio_command(hass, connection, msg) -> None:
         elif action != "list":
             serial = msg.get("serial", "")
             if serial.startswith("group:"):
+                if action.startswith("firmware_"):
+                    raise ValueError("Firmware wird ausschließlich für einzelne Lampen geprüft; keine Gruppeninstallation.")
                 await groups.command(serial.removeprefix("group:"), msg)
             else:
                 studio = studios.get(serial)

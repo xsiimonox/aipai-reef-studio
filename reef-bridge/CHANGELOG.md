@@ -1,5 +1,10 @@
 # Reef Bridge Changelog
 
+## [0.8.0] - 2026-11-16
+
+- Gemeinsames Menü „Lampen-Updates“ mit manueller Herstellerabfrage je Lampe. Antwortgröße und Gerätekennung werden geprüft; keine automatischen Herstellerabfragen.
+- Firmwareinstallation ist in Oberfläche und Backend gesperrt, bis authentifizierte Firmware und lokale Versionskontrolle belegt sind. Keine Updatebefehle an Lampen, keine Gruppeninstallation.
+
 ## [0.7.0] - 2026-11-16
 
 - PilotLamp/Tastenbeleuchtung lokal im gemeinsamen Studio ein-/ausschalten, auch für Lampengruppen. Lampenidentität wird vor dem dedizierten `mculed`-Befehl geprüft. Keine Änderung am Lichtprofil; Status zeigt nur die letzte gesendete Einstellung.

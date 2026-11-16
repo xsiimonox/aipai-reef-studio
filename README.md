@@ -2,6 +2,8 @@
 
 # AiPai Studio
 
+Unter **Lampen-Updates** lassen sich die beim Hersteller hinterlegte Version und die neueste Modellversion manuell je Lampe prüfen. Die tatsächlich installierte Version ist bisher nicht lokal belegbar. Die Installation bleibt wegen fehlender Firmware-Authentifizierung und Erfolgskontrolle gesperrt. [Umfang und Grenzen der Firmwareübersicht](docs/lamp-firmware.md).
+
 Die A8-SE-Tastenbeleuchtung lässt sich lokal über den HA-Schalter **Tastenbeleuchtung** oder im Studio unter **Kanalpegel → Tastenbeleuchtung ein/aus** bedienen, auch für Gruppen. [Details, Befehlsnachweis und Grenzen](docs/pilotlamp.md).
 
 ### Diagnose bei abweichenden Lichtzeiten

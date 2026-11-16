@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.26.0";
+const REEF_STUDIO_VERSION = "0.27.0";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -24,6 +24,7 @@ const STYLE = `
   .transfer-card{width:min(100%,380px);padding:28px;border:1px solid #496176;border-radius:24px;background:#172433;text-align:center;box-shadow:0 24px 80px #0006}
   .transfer-spinner{width:36px;height:36px;margin:0 auto 18px;border:3px solid #395064;border-top-color:#a0e7df;border-radius:50%;animation:transfer-spin .85s linear infinite}
   .transfer-card p{margin-top:8px;color:#b8c8d9}.transfer-card:focus{outline:2px solid #a0e7df}
+  .firmware-card{overflow-wrap:anywhere}.firmware-card dl{display:grid;gap:6px;margin:18px 0}.firmware-card dt{color:#aebdce;font-size:.8rem}.firmware-card dd{margin:0 0 8px;font-variant-numeric:tabular-nums}.firmware-card .actions{align-items:stretch}
   @keyframes transfer-spin{to{transform:rotate(360deg)}}
   @media(prefers-reduced-motion:reduce){.transfer-spinner{animation:none}}
   :host{display:block;color:#edf5ff;font:400 15px/1.45 system-ui,sans-serif}
@@ -78,7 +79,7 @@ const STYLE = `
   .field{gap:7px;font-size:.8rem;color:#b8c8d9;min-width:0;flex:1 1 160px}.field input,.field select{display:block}
   .device-field{flex:0 1 280px;max-width:360px}.pill{padding:5px 10px;background:#263447;color:#cad9e9;font-size:.75rem;white-space:nowrap}
   .mode-note{padding:16px 20px;background:#172b33;border-color:#33505a;border-radius:16px;gap:20px}.mode-note span{font-size:.68rem;letter-spacing:.1em;flex:none}.mode-note strong{font-size:.92rem;color:#afece5;overflow-wrap:anywhere}
-  .tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;margin-top:28px;background:#171f2c;border:1px solid #2b3748;border-radius:16px}
+  .tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:5px;margin-top:28px;background:#171f2c;border:1px solid #2b3748;border-radius:16px}
   .tabs button{background:transparent;border-color:transparent;color:#b5c3d4;font-size:.86rem;padding:10px 8px}
   .tabs button[aria-pressed=true]{background:#334355;color:#f3f7fb;border-color:#4b6077;box-shadow:0 2px 7px #0002}
   .editor{margin-top:16px}.editor>.muted{margin-top:8px;max-width:78ch}.edit-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;margin-top:24px;padding-top:24px;border-top:1px solid #2b3748}
@@ -195,7 +196,7 @@ class ReefStudioPanel extends HTMLElement {
     const signature = list => JSON.stringify(list.map(
       light => [
         light.serial, light.name, light.labels, light.programs, light.scenes, light.local,
-        light.program, light.program_execution, light.startup_hold, light.scene, light.preview, light.activity,
+        light.program, light.program_execution, light.startup_hold, light.scene, light.preview, light.activity, light.firmware,
       ]
     ));
     const changed = signature([...payload.lights, ...payload.groups]) !== signature(this.lights) ||
@@ -319,6 +320,7 @@ class ReefStudioPanel extends HTMLElement {
       <div class="tabs"><button data-tab="programs" aria-pressed="${this.kind === "programs"}">Tagesprogramme</button>
       <button data-tab="scenes" aria-pressed="${this.kind === "scenes"}">Szenen</button>
       <button data-tab="groups" aria-pressed="${this.kind === "groups"}">Gruppen</button>
+      <button data-tab="firmware" aria-pressed="${this.kind === "firmware"}">Lampen-Updates</button>
       <button data-tab="diagnostics" aria-pressed="${this.kind === "diagnostics"}">Diagnose</button></div>
       <section class="panel editor" id="editor"></section>` :
       '<section class="panel empty">Sobald eine AIPAI-Lampe eingerichtet ist, erscheint sie hier.</section>'}
@@ -456,6 +458,7 @@ class ReefStudioPanel extends HTMLElement {
 
   editor() {
     const light = this.light;
+    if (this.kind === "firmware") return this.firmwareEditor();
     if (this.kind === "diagnostics") return this.diagnosticsEditor();
     if (this.kind === "groups") return this.groupEditor();
     const programs = this.kind === "programs";
@@ -527,6 +530,27 @@ class ReefStudioPanel extends HTMLElement {
       };
     }
     if (this.draft) this.renderDraft(programs);
+  }
+
+  firmwareEditor() {
+    const node = this.$.querySelector('#editor');
+    const lamps = this.lights.filter(light => !light.group);
+    node.innerHTML = `<h2>Lampen-Updates</h2><p class="muted">Versionsübersicht für jede Lampe. Die Herstellerabfrage überträgt die Seriennummer an den Herstellerserver. Sie startet erst über „Versionen prüfen“. Die Angaben kommen über unverschlüsseltes HTTP und sind keine lokal bestätigten Firmwareversionen.</p>
+      <div class="edit-grid">${lamps.map(light => {
+        const fw = light.firmware || {};
+        const result = fw.error ? 'Prüfung fehlgeschlagen' : fw.available === true ? 'Hersteller meldet ein Update' : fw.available === false ? 'Laut Hersteller kein neueres Update' : 'Noch nicht geprüft';
+        return `<section class="panel firmware-card"><h2>${escape(light.name || light.serial)}</h2><p class="muted">${escape(light.serial)} · ${escape(fw.vendor_model || 'Herstellermodell noch unbekannt')}</p>
+          <dl><dt>Aktuell installiert · lokal bestätigt</dt><dd>Unbekannt – kein belegter Leseweg</dd><dt>Zuletzt beim Hersteller gemeldet</dt><dd>${escape(fw.manufacturer_version || 'Unbekannt')}</dd><dt>Neueste Hersteller-Version</dt><dd>${escape(fw.latest || 'Unbekannt')}</dd></dl>
+          <p>${escape(result)}</p><p class="muted">${escape(fw.notes || '')}</p>
+          ${fw.checked_at ? `<small>Geprüft: ${escape(new Date(fw.checked_at).toLocaleString())}</small>` : ''}
+          ${fw.error ? `<p class="notice">${escape(fw.error)}</p>` : ''}
+          <div class="actions"><button data-firmware-check="${escape(light.serial)}">Versionen prüfen</button><button data-firmware-install="${escape(light.serial)}" disabled>Firmware manuell installieren</button></div>
+          <p class="muted">${escape(fw.block_reason || 'Installation gesperrt: Firmware-Signatur und lokale Versionskontrolle sind nicht verifiziert.')}</p></section>`;
+      }).join('')}</div>`;
+    node.querySelectorAll('[data-firmware-check]').forEach(button => {
+      button.disabled = !!this.busy;
+      button.onclick = () => this.send('firmware_check', {serial: button.dataset.firmwareCheck});
+    });
   }
 
   diagnosticsEditor() {

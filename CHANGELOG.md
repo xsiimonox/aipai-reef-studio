@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.27.0] - 2026-11-16
+
+### Added
+
+- Menü „Lampen-Updates“: jede Lampe separat, Hersteller-Modell, in der Hersteller-Datenbank gemeldete Firmware, neueste Modellversion, Hinweise und Zeitpunkt der manuellen Prüfung.
+- Herstellerabfragen sind explizit manuell, auf genau die Seriennummer beschränkt, größenbegrenzt und für 60 Sekunden gegen Wiederholung gesperrt. Unbekannte Versionen und Abfragefehler werden nicht als „aktuell“ ausgegeben.
+- Manueller Installationsbutton mit sichtbarer Sperrbegründung. Firmwareinstallation bleibt auch im Backend gesperrt: Der Hersteller bietet die geprüfte Versionsabfrage nur per HTTP, ohne belegte signierte Firmware und ohne lokalen Versionsnachweis. Dies ist eine Versionsübersicht, kein freigegebener OTA-Flasher.
+
 ## [0.26.0] - 2026-11-16
 
 ### Added

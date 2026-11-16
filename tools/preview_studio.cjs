@@ -111,6 +111,23 @@ const root = path.resolve(__dirname, '..');
     await panel.evaluate(async el => { el.failWrite(new Error('Simulierter Übertragungsfehler')); await el.testPending; });
     assert.equal(await panel.locator('#transfer-overlay').count(), 0);
     assert((await panel.locator('#notice').textContent()).includes('Simulierter Übertragungsfehler'));
+    await panel.evaluate(el => {
+      el.firmwareCalls = [];
+      el._hass.callWS = async msg => {
+        el.firmwareCalls.push(msg);
+        const lights = el.lights.filter(l => !l.group).map(light => ({...light,firmware: {manufacturer_version:'20250101',latest:'20260601',available:true,install_allowed:false,notes:'<img src=x onerror=alert(1)>'}}));
+        return {lights, groups: el.groups};
+      };
+    });
+    await panel.locator('[data-tab=firmware]').click();
+    assert.equal(await panel.locator('[data-firmware-check]').count(), 2);
+    assert.equal(await panel.locator('[data-firmware-install]:disabled').count(), 2);
+    await panel.locator('[data-firmware-check="six"]').click();
+    await page.waitForFunction(()=>!document.querySelector('aipai-reef-studio').busy);
+    assert(await panel.evaluate(el => el.firmwareCalls.some(msg => msg.action === 'firmware_check' && msg.serial === 'six')));
+    assert.equal(await panel.locator('#editor img').count(), 0);
+    assert((await panel.locator('#editor').textContent()).includes('20260601'));
+    assert((await panel.locator('#editor').textContent()).includes('kein belegter Leseweg'));
     console.log('PASS: global program intensity, point duplication, 320–1440px layout, editors, groups, no JS errors. Screenshots: ' + screenshotDir);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

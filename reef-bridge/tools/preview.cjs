@@ -95,5 +95,11 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('[data-indicator="false"]').click();
   await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.body.action==='indicator'&&c.body.enabled===false&&c.body.serial==='group:group1'));
+  await ui.locator('[data-tab=firmware]').click();
+  assert.equal(await ui.locator('[data-firmware-check]').count(),2);
+  assert.equal(await ui.locator('[data-firmware-install]:disabled').count(),2);
+  await ui.locator('[data-firmware-check="DEMO6"]').click();
+  await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
+  assert(calls.some(c=>c.body.action==='firmware_check'&&c.body.serial==='DEMO6'));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
