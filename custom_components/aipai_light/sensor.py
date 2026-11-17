@@ -24,6 +24,7 @@ from .const import DOMAIN
 from .experimental import ExperimentalDeviceHub
 from .experimental_entities import build_entities
 from .hub import AipaiLightHub
+from .reef_bridge import ReefBridgeHub
 
 
 async def async_setup_entry(
@@ -41,6 +42,45 @@ async def async_setup_entry(
     elif isinstance(hub, ExperimentalDeviceHub):
         async_add_entities(build_entities(hub, "sensor"))
         hub.request_refresh()
+    elif isinstance(hub, ReefBridgeHub):
+        async_add_entities([ReefBridgeStatusSensor(hub)])
+
+
+class ReefBridgeStatusSensor(SensorEntity):
+    """Minimal, local status entry that creates the Reef Bridge device."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Status"
+    _attr_icon = "mdi:bridge"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: ReefBridgeHub) -> None:
+        self._hub = hub
+        self._attr_unique_id = f"reef_bridge_{hub.bridge_id}_status"
+        self._attr_device_info = hub.device_info
+        hub.register_entity(self)
+
+    @property
+    def available(self) -> bool:
+        return self._hub.available
+
+    @property
+    def native_value(self) -> str:
+        return "online" if self._hub.available else "offline"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self._hub.data
+        return {
+            "ip_address": self._hub.host,
+            "webinterface": self._hub.url,
+            "firmware_version": data.get("version"),
+            "lamp_count": len(data.get("workspace", {}).get("lamps", [])),
+            "update_available": data.get("update", {}).get("available"),
+        }
+
+    async def async_update(self) -> None:
+        await self._hub.async_refresh()
 
 
 def _rows_to_curves(rows: list[str], roads: int) -> list[list[int]]:

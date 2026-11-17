@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.13.0] - 2026-11-17
+
+- Die Bridge kündigt den lokalen mDNS-Dienst `_aipai-reefbridge._tcp` mit stabiler Gerätekennung und Firmwareversion an. AiPai Studio in Home Assistant kann sie dadurch automatisch entdecken und mit einem Webinterface-Link als Gerät anlegen.
+
 ## [0.12.0] - 2026-11-17
 
 - DNS-Anfragen werden nur verarbeitet, während das Bridge-Setup-Netz aktiv ist. Das beendet die fortlaufende ESP32-Meldung `WiFiUdp.cpp ... parsePacket(): could not receive data: 9` nach der Heim-WLAN-Einrichtung.

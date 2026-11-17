@@ -17,9 +17,10 @@
   "documentation": "https://github.com/xsiimonox/aipai-reef-studio",
   "integration_type": "device",
   "iot_class": "local_polling",
+  "zeroconf": ["_aipai-reefbridge._tcp.local."],
   "issue_tracker": "https://github.com/xsiimonox/aipai-reef-studio/issues",
   "requirements": [
     "paho-mqtt>=1.6.1"
   ],
-  "version": "0.28.2"
+  "version": "0.28.3"
 }

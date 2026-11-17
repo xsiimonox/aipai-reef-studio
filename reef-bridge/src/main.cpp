@@ -76,6 +76,7 @@ struct Lamp {
 } lamps[MAX_LAMPS];
 bool fsReady=false, dnsActive=false, updateAvailable=false, updateCheckRequested=false, updateInstalling=false, provisioningAp=false;
 String latestVersion, latestSha256, updateError, apPassword, apSsid;
+String bridgeId;
 size_t latestFirmwareSize=0;
 uint32_t lastUpdateCheck=0, lastReconnect=0, provisioningApStop=0, otaRestartAt=0;
 bool expired(uint32_t deadline) { return int32_t(millis()-deadline)>=0; }
@@ -574,7 +575,7 @@ void setup() {
   // Initialize only on first use; a later mount failure must retain the data.
   if(!fsReady&&!prefs.getBool("studio_fs",false)){Serial.println("Initializing Studio filesystem");fsReady=LittleFS.begin(true);}
   if(fsReady)prefs.putBool("studio_fs",true);
-  loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");apSsid="ReefBridge-"+String((uint32_t)ESP.getEfuseMac(),HEX);
+  loadWorkspace();apPassword=prefs.getString("ap_pass","ReefBridge2026!");bridgeId=String((uint32_t)ESP.getEfuseMac(),HEX);apSsid="ReefBridge-"+bridgeId;
   WiFi.mode(WIFI_AP_STA);WiFi.setHostname(bridgeHostname);startSetupAp(false);
   WiFi.begin(prefs.getString("ssid","").c_str(),prefs.getString("wifi_pass","").c_str());configTime(0,0,"pool.ntp.org","time.cloudflare.com");
   Serial.println("Setup: http://192.168.8.1 | AP password: "+apPassword);
@@ -624,7 +625,7 @@ void loop() {
   if(otaRestartAt&&expired(otaRestartAt)){delay(50);ESP.restart();}
   if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
   if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");}
-  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");if(!provisioningAp){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);}started=true;}
+  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");MDNS.addService("aipai-reefbridge","tcp",80);MDNS.addServiceTxt("aipai-reefbridge","tcp","id",bridgeId);MDNS.addServiceTxt("aipai-reefbridge","tcp","version",BRIDGE_VERSION);if(!provisioningAp){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);}started=true;}
     // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
     // between fixtures; each fixture has independent mode, timers and clock.
     static int cursor=0;for(int n=0;n<count();n++){int i=(cursor+n)%count();expire(i);if(lamps[i].force||millis()-lamps[i].lastOutput>=30000){lamps[i].force=false;lamps[i].lastOutput=millis();output(i);cursor=(i+1)%count();break;}}

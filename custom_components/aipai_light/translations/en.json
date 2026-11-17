@@ -33,6 +33,10 @@
           "device_type": "Device type",
           "model": "Light model (optional, e.g. A8-SE8)"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "Add Reef Bridge",
+        "description": "A locally announced Reef Bridge was found at {name}. Add it to Home Assistant? The created device includes a direct link to the Bridge web interface."
       }
     },
     "error": {
@@ -43,7 +47,8 @@
       "unknown": "That light is no longer available; please scan again."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "invalid_discovery": "The discovered Reef Bridge did not provide a usable ID or address."
     }
   },
   "options": {

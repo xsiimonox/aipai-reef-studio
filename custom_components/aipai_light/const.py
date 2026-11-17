@@ -25,6 +25,7 @@ CONF_DEVICE_TYPE = "device_type"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_NAME = "name"
 CONF_SUBNET = "subnet"
+CONF_HOST = "host"
 CONF_LOCAL_CONTROL = "local_control"
 CONF_NIGHT_FEED_LEVEL = "night_feed_level"
 CONF_NIGHT_FEED_CHANNELS = "night_feed_channels"
@@ -45,6 +46,7 @@ DEFAULT_ACCLIM_WEEKS = 4
 
 # Verified device type (has real hardware behind it).
 DEVICE_TYPE_LIGHT = "light"
+DEVICE_TYPE_REEF_BRIDGE = "reef_bridge"
 
 MQTT_HOST = "mqtt.doseen.com"
 MQTT_PORT = 8083

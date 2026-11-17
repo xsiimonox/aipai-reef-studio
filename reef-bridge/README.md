@@ -75,6 +75,10 @@ Beim Ausfall von HA oder Bridge läuft das dauerhaft gespeicherte Lampenprogramm
 
 ## Optionale Home-Assistant-Anbindung
 
+### Automatisch als Bridge-Gerät erkennen
+
+Ab Bridge 0.13.0 meldet sich die Bridge im Heimnetz per mDNS als `_aipai-reefbridge._tcp` an. Ist AiPai Studio 0.28.3 oder neuer in Home Assistant installiert, erscheint unter **Einstellungen → Geräte & Dienste** automatisch ein Fund für **Reef Bridge**. Nach dem Bestätigen legt Home Assistant ein lokales Gerät mit Statussensor an. Auf dessen Geräteseite führt **Konfiguration** direkt zur Weboberfläche der Bridge. Für die Erkennung müssen Home Assistant und die Bridge im selben Layer-2-Netz/VLAN sein; mDNS darf nicht vom Router oder WLAN-Controller blockiert werden.
+
 HA → Bridge → Lampe. Der bestehende REST-Lease-Einstieg steuert die **erste eingerichtete Lampe**; weitere Lampen und Gruppen sind über die Studio-API verfügbar.
 
 1. [home-assistant/reef_bridge.yaml](home-assistant/reef_bridge.yaml) nach `/config/packages/reef_bridge.yaml` kopieren.

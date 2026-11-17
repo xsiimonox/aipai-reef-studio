@@ -19,6 +19,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.components.zeroconf import ZeroconfServiceInfo
 
 from homeassistant.helpers import config_validation as cv
 
@@ -27,6 +28,7 @@ from .const import (
     CONF_ACCLIM_WEEKS,
     CONF_CHANNEL_PROFILE,
     CONF_DEVICE_TYPE,
+    CONF_HOST,
     CONF_DROPOUT_DEBOUNCE,
     CONF_LOCAL_CONTROL,
     CONF_MODEL,
@@ -43,6 +45,7 @@ from .const import (
     DEFAULT_NIGHT_FEED_LEVEL,
     DEFAULT_POLL_INTERVAL,
     DEVICE_TYPE_LIGHT,
+    DEVICE_TYPE_REEF_BRIDGE,
     DOMAIN,
 )
 from .discovery import FoundLight, async_local_subnets, async_scan
@@ -71,6 +74,38 @@ class AipaiLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._found: list[FoundLight] = []
+        self._bridge: dict[str, str] | None = None
+
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> FlowResult:
+        """Offer a locally announced Reef Bridge without scanning a subnet."""
+        properties = discovery_info.properties
+        raw_id = properties.get("id", "")
+        bridge_id = raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id)
+        host = str(discovery_info.ip_address or discovery_info.host).rstrip(".")
+        if not bridge_id or not host:
+            return self.async_abort(reason="invalid_discovery")
+        await self.async_set_unique_id(f"reef_bridge_{bridge_id}")
+        self._abort_if_unique_id_configured()
+        self._bridge = {"id": bridge_id, "host": host}
+        self.context["title_placeholders"] = {"name": f"Reef Bridge ({host})"}
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is not None and self._bridge is not None:
+            return self.async_create_entry(
+                title="Reef Bridge",
+                data={
+                    CONF_SERIAL: self._bridge["id"],
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_REEF_BRIDGE,
+                    CONF_HOST: self._bridge["host"],
+                    CONF_NAME: "Reef Bridge",
+                },
+            )
+        return self.async_show_form(step_id="zeroconf_confirm")
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Entry point: choose to search the network or add by hand."""

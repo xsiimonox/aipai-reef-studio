@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.3] - 2026-11-17
+
+### Added
+
+- Reef Bridge wird im lokalen Netz über mDNS automatisch erkannt und kann als eigenes Home-Assistant-Gerät hinzugefügt werden. Die Geräteseite enthält Status, Firmware-/Lampenanzahl und einen direkten Link zur Bridge-Weboberfläche.
+
 ## [0.28.2] - 2026-11-17
 
 ### Fixed

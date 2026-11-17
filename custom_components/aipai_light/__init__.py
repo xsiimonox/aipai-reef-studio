@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_HOST,
     CONF_CHANNEL_PROFILE,
     CONF_DROPOUT_DEBOUNCE,
     CONF_LOCAL_CONTROL,
@@ -23,6 +24,7 @@ from .const import (
     DEFAULT_DROPOUT_DEBOUNCE,
     DEFAULT_POLL_INTERVAL,
     DEVICE_TYPE_LIGHT,
+    DEVICE_TYPE_REEF_BRIDGE,
     DOMAIN,
 )
 from .experimental import ExperimentalDeviceHub
@@ -39,7 +41,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     poll = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     debounce = entry.options.get(CONF_DROPOUT_DEBOUNCE, DEFAULT_DROPOUT_DEBOUNCE)
 
-    if device_type == DEVICE_TYPE_LIGHT:
+    if device_type == DEVICE_TYPE_REEF_BRIDGE:
+        from .reef_bridge import ReefBridgeHub
+
+        hub = ReefBridgeHub(
+            hass,
+            serial,
+            entry.data[CONF_HOST],
+            entry.data.get(CONF_NAME) or None,
+        )
+    elif device_type == DEVICE_TYPE_LIGHT:
         # A local entry stays local while HA retries discovery.
         local_ip = None
         if entry.options.get(CONF_LOCAL_CONTROL):
