@@ -16,13 +16,25 @@ Firmware **0.11.0** mit demselben AiPai-Studio-Editor wie Home Assistant. Tagesp
 
 - Identischer Editor und identisches Design mit der HA-Integration: grafischer Tagesverlauf, duplizierbare Stützpunkte mit Uhrzeit, lineare Übergänge, Rampen-Assistent und ein proportionaler Gesamtintensitätsregler für das vollständige Tagesprofil.
 - Gemeinsame lokale Programm- und Szenenbibliothek für alle Lampen dieser Bridge. Neue Einträge, Bearbeiten, Duplizieren, Löschen und Aktivieren. Bis 32 Programme und 32 Szenen, insgesamt maximal 48 KB JSON bzw. die verfügbare Parser-Kapazität; größere Änderungen werden mit Fehlermeldung abgelehnt.
-- Bis zu vier Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten.
+- Bis zu zwölf Lampen im selben Netz; jeweils Name, IP, Seriennummer, 6/8 Kanäle und POSIX-Zeitzone. Bis 16 Gruppen, auch mit nur einer Lampe. Eine gemischte Gruppe zeigt alle acht Kanäle; UV und Warm White wirken nur auf Achtkanal-Lampen. Sechskanal-Lampen ignorieren die zusätzlichen Werte. MAX-Profile bleiben beim Bearbeiten an Sechskanal-Lampen vollständig erhalten. Für häufige Gruppen-Vorschauen sind maximal acht Lampen pro Bridge empfohlen.
 - „Auf Lampe speichern & aktivieren“ überträgt jedes Tagesprogramm als 24 Stundenpunkte in den persistenten Speicher der ausgewählten Lampe(n). Die Lampen-Firmware interpoliert und führt es ohne Bridge, Home Assistant, Cloud oder Internet weiter. Jede Lampe hat einen eigenen aktiven Eintrag.
 - Temporäre Szenen 1–60 Minuten, dauerhafter manueller Modus, Countdown und Abbruch. Regler einer einzelnen Lampe starten eine Vorschau für eine Minute im Programmeditor bzw. fünf Minuten im Szeneneditor. Gruppen lassen sich über die Uhrzeit-Vorschau oder eine gespeicherte Szene ansehen.
 - Temperatur, aktive Lichtart, Update-Hinweis, Diagnoseprotokoll und vollständiges JSON-Backup/Import. Die Bridge prüft beim Öffnen, manuell und spätestens alle sechs Stunden auf Updates. Verfügbare Versionen lassen sich direkt im Webinterface installieren; HTTPS-Zertifikat, Zielversion, Dateigröße und SHA-256-Prüfsumme werden vor dem Neustart geprüft. USB bleibt als Wiederherstellungsweg verfügbar.
 - Ein Bridge-Neustart sendet keine Lichtwerte und schaltet keine Lampe ein. Bestehende Programme älterer Bridge-Versionen erscheinen einmalig im sicheren Haltemodus und müssen zum dauerhaften Speichern erneut aktiviert werden.
 
 „Synchron gehalten“ bedeutet: Beide Pakete bauen den Editor direkt aus `custom_components/aipai_light/panel/reef-studio.js`. Der Adapter enthält nur Bridge-Transport und Hardwareeinrichtung. Es gibt keine zweite Kopie der Layouts oder Editoren. CI prüft die Studio-Version und baut die Bridge auch bei Änderungen am gemeinsamen Panel. Bereits geflashte Geräte erhalten neue Funktionen erst mit einem Firmware-Update. Die Bibliotheken einer HA-Installation und einer Bridge werden **nicht automatisch über das Netz miteinander abgeglichen**.
+
+## Skalierung und Hardware
+
+Die harte Vier-Lampen-Grenze früherer Bridge-Versionen war eine vorsichtige Erstkonfiguration, keine WLAN-Protokollgrenze. Die aktuelle Firmware unterstützt bis zu **zwölf** Lampen pro klassischem ESP32-WROOM/DevKit. Dauerhafte Tagesprofile werden direkt in jeder Lampe ausgeführt; die Bridge muss deshalb nicht dauerhaft Pegel senden. Szenen, Vorschauen und Statusabfragen laufen dagegen nacheinander über HTTP.
+
+| Aufbau | Sinnvolle Größe | Hinweis |
+| --- | --- | --- |
+| 1 × ESP32-WROOM, ruhiger Tagesbetrieb | 1–12 Lampen | Bis zwölf Lampen werden gespeichert; feste DHCP-Zuordnungen verwenden. |
+| 1 × ESP32-WROOM, häufige Gruppen-Vorschau/Szenen | 1–8 Lampen | Kürzere Reaktionszeit, weil Lampenbefehle seriell gesendet werden. |
+| 30+ Lampen | 3+ Bridges mit je 8–10 Lampen | Jede Bridge erhält eigene Gruppen und ein eigenes 2,4-GHz-WLAN-Segment bzw. ausreichende Access-Point-Kapazität. |
+
+Für 30 oder mehr Lampen empfehle ich mehrere Bridges statt eines einzelnen ESP32: zum Beispiel drei Controller mit je acht bis zehn Lampen. Die Tagesprogramme bleiben je Lampe ausfallsicher gespeichert. Übergeordnete, bridgeübergreifende Szenen lassen sich derzeit über individuelle REST-Aufrufe je Bridge in einer Home-Assistant-Automation gleichzeitig auslösen; AiPai-Studio-Gruppen sind absichtlich auf eine Bridge begrenzt. Eine ESP32-S3-/PSRAM-Variante ist mit dem bereitgestellten Abbild noch nicht unterstützt und erhöht nicht automatisch die WLAN-Kapazität.
 
 ## Hardware und Installation
 

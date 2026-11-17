@@ -1,5 +1,5 @@
 const COLORS = ["#dbefff", "#62bcff", "#ff818a", "#63ddb5", "#838dff", "#ce94ff", "#a983ef", "#ffd18b"];
-const REEF_STUDIO_VERSION = "0.28.1";
+const REEF_STUDIO_VERSION = "0.28.2";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const clock = minute => [Math.floor(minute / 60), minute % 60].map(n => String(n).padStart(2, "0")).join(":");
@@ -167,15 +167,22 @@ class ReefStudioPanel extends HTMLElement {
     // fixture. Preview only the channels physically available on that lamp.
     this.previewLevels = levels.slice(0, light.labels.length);
     this.previewSeconds = this.kind === "programs" ? 60 : 300;
+    if (this.previewSending) { this.previewQueued = true; return; }
     clearTimeout(this.previewTimer);
     this.previewTimer = setTimeout(() => this.sendLivePreview(), 180);
   }
 
   async sendLivePreview() {
     if (this.busy) return;
+    if (this.previewSending) { this.previewQueued = true; return; }
     const levels = this.previewLevels;
     if (!levels) return;
-    await this.send("preview", {levels, preview_seconds: this.previewSeconds});
+    this.previewQueued = false;
+    await this.send("preview", {levels, preview_seconds: this.previewSeconds}, {silent: true});
+    if (this.previewQueued && !this.busy) {
+      this.previewQueued = false;
+      this.sendLivePreview();
+    }
   }
 
   async refresh() {
@@ -262,11 +269,14 @@ class ReefStudioPanel extends HTMLElement {
     }
   }
 
-  async send(action, extra = {}) {
-    if (this.busy) return;
-    this.setBusy(true);
-    this.update();
-    this.status("Wird verarbeitet …");
+  async send(action, extra = {}, {silent = false} = {}) {
+    if (this.busy || (silent && this.previewSending)) return;
+    if (silent) this.previewSending = true;
+    else {
+      this.setBusy(true);
+      this.update();
+      this.status("Wird verarbeitet …");
+    }
     try {
       const lights = await this._hass.callWS({
         type: "aipai_light/studio", serial: this.serial, kind: ["programs", "scenes"].includes(this.kind) ? this.kind : "programs", action, ...extra,
@@ -278,8 +288,11 @@ class ReefStudioPanel extends HTMLElement {
     } catch (error) {
       this.status(error.message || "Der Befehl konnte nicht ausgeführt werden.");
     } finally {
-      this.setBusy(false);
-      this.update();
+      if (silent) this.previewSending = false;
+      else {
+        this.setBusy(false);
+        this.update();
+      }
     }
   }
 

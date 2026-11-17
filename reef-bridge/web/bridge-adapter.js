@@ -76,7 +76,7 @@ class ReefBridgePanel extends customElements.get('aipai-reef-studio') {
     const provision=state?.provision || {};
     const access=this.provisionAccess || provision;
     const networks=this.provisionNetworks || [];
-    node.innerHTML=`<style>#bridge-settings .field{margin-top:16px}#bridge-settings h2{margin-bottom:8px}</style><div id="bridge-settings"><h2>Reef Bridge einrichten</h2><p class="muted">Bis zu vier Lampen im gleichen WLAN. Programme und Szenen werden auf dieser Bridge gemeinsam gespeichert.</p>
+    node.innerHTML=`<style>#bridge-settings .field{margin-top:16px}#bridge-settings h2{margin-bottom:8px}</style><div id="bridge-settings"><h2>Reef Bridge einrichten</h2><p class="muted">Bis zu zwölf Lampen im gleichen WLAN. Für häufige Gruppen-Vorschauen sind bis zu acht Lampen pro Bridge empfohlen. Programme und Szenen werden auf dieser Bridge gemeinsam gespeichert.</p>
       <div class="edit-grid"><div><h2>Lampen</h2><div class="point-list">${lamps.map((lamp,i)=>`<button data-fixture="${i}">${safe(lamp.name)}</button>`).join('')}<button id="add-lamp">+ Lampe</button></div>
       <label class="field">Name<input id="device-name" maxlength="64" required></label>
       <label class="field">Lampen-IP<input id="device-ip" placeholder="192.168.178.141" required></label>

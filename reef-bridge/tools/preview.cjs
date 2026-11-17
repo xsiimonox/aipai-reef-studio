@@ -67,6 +67,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await ui.locator('[data-level="1"][type=number]').fill('55');
   await page.waitForTimeout(350);
   assert(calls.some(c=>c.body.action==='preview'&&c.body.preview_seconds===60&&c.body.levels.length===6));
+  assert.equal(await ui.evaluate(el=>!!el.busy),false,'live preview must not lock the editor');
+  assert.equal(await ui.locator('#transfer-overlay').count(),0,'live preview must not show the transfer overlay');
   await ui.locator('#name').fill('Riff · Neues Programm');await ui.locator('#save-new').click();
   await page.waitForFunction(()=>document.querySelector('reef-bridge-panel').light.programs['saved-'+0]!==undefined || Object.keys(document.querySelector('reef-bridge-panel').light.programs).length===2);
   const screenshotDir=process.env.BRIDGE_SCREENSHOT_DIR||'/tmp/reef-bridge-studio';fs.mkdirSync(screenshotDir,{recursive:true});
@@ -74,6 +76,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   for(const width of [1440,1024,768,390,320]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow at '+width);assert.deepEqual(await ui.evaluate(el=>[...el.shadowRoot.querySelectorAll('button,input,select,.panel')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>n.id||n.className)),[],'control overflow at '+width);if(width===1440||width===390)await page.screenshot({path:path.join(screenshotDir,'bridge-'+width+'.png'),fullPage:true});}
   await page.setViewportSize({width:1440,height:1000});
   await ui.getByRole('button',{name:'Einrichtung',exact:true}).click();await page.screenshot({path:path.join(screenshotDir,'setup.png'),fullPage:true});
+  assert((await ui.locator('#bridge-settings').textContent()).includes('zwölf Lampen'));
   await ui.locator('#check-bridge-update').click();await page.waitForFunction(()=>!document.querySelector('reef-bridge-panel').busy);
   assert(calls.some(c=>c.path==='/api/update/check'));assert.equal(await ui.locator('#install-bridge-update').count(),1);
   await ui.locator('#enable-provision').click();await page.waitForFunction(()=>document.querySelector('reef-bridge-panel')._hass.state.provision.active===true);

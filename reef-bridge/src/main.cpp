@@ -18,7 +18,10 @@ WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
 DynamicJsonDocument workspace(65536);
-const int MAX_LAMPS = 4;
+// Twelve fixtures are safe for the WROOM build. Eight remain the recommended
+// ceiling when frequent group previews must feel immediate; see scaling docs.
+const int MAX_LAMPS = 12;
+const unsigned STATUS_LOGS_PER_LAMP = MAX_LAMPS > 8 ? 8 : 32;
 const char* codes[] = {"w","b","r","g","b2","p","uv","wm"};
 const char* bridgeHostname = "ReefBridge";
 const char* installerUrl = "https://xsiimonox.github.io/aipai-reef-studio/";
@@ -71,7 +74,7 @@ struct Lamp {
   String deviceClock, deviceTimezone, power, observed;
   int openHour=0, closeHour=0;
 } lamps[MAX_LAMPS];
-bool fsReady=false, updateAvailable=false, updateCheckRequested=false, updateInstalling=false, provisioningAp=false;
+bool fsReady=false, dnsActive=false, updateAvailable=false, updateCheckRequested=false, updateInstalling=false, provisioningAp=false;
 String latestVersion, latestSha256, updateError, apPassword, apSsid;
 size_t latestFirmwareSize=0;
 uint32_t lastUpdateCheck=0, lastReconnect=0, provisioningApStop=0, otaRestartAt=0;
@@ -90,7 +93,7 @@ void fail(String message,int code=400) {
 void ok() { server.send(200,"application/json","{\"ok\":true}"); }
 void startSetupAp(bool provisioning=false) {
   WiFi.softAPdisconnect(true);delay(100);WiFi.softAPConfig(setupIp,setupGateway,setupMask);
-  WiFi.softAP(apSsid.c_str(),apPassword.c_str());dnsServer.start(53,"*",setupIp);
+  WiFi.softAP(apSsid.c_str(),apPassword.c_str());dnsServer.start(53,"*",setupIp);dnsActive=true;
   provisioningAp=provisioning;if(provisioning)provisioningApStop=millis()+10UL*60*1000;
 }
 bool body(JsonDocument& doc) {
@@ -437,7 +440,7 @@ void status() {
     if(lamp.scene.length()) {JsonObject scene=state.createNestedObject("scene");scene["id"]=lamp.scene;if(lamp.until)scene["until"]=deadline(lamp.until);else scene["until"]=nullptr;scene["manual"]=lamp.mode=="manual";}
     if(lamp.previewEnd){JsonObject preview=state.createNestedObject("preview");preview["until"]=deadline(lamp.previewEnd);}
     if(lamp.mode!="firmware"){JsonArray sent=state.createNestedArray("sent");for(int j=0;j<channels(i);j++)sent.add(lamp.sent[j]);}
-    JsonArray log=state.createNestedArray("log");unsigned start=lamp.logCount>32?lamp.logCount-32:0;
+    JsonArray log=state.createNestedArray("log");unsigned start=lamp.logCount>STATUS_LOGS_PER_LAMP?lamp.logCount-STATUS_LOGS_PER_LAMP:0;
     for(unsigned j=start;j<lamp.logCount;j++){JsonObject event=log.createNestedObject();event["at"]=String(j+1);event["message"]=lamp.logs[j%32];}
   }
   // Preserve the first fixture's REST contract used by the HA lease package.
@@ -594,7 +597,7 @@ void setup() {
   server.on("/api/studio",HTTP_POST,[]{DynamicJsonDocument msg(16000);if(body(msg))studio(msg);});
   server.on("/api/fixture",HTTP_POST,[]{
     DynamicJsonDocument msg(2048);if(!body(msg))return;int index=msg["index"]|-1;
-    if(index<0)index=count();if(index>count()||index>=MAX_LAMPS||!validFixture(msg.as<JsonVariant>())){fail("Bitte Name, IP, Seriennummer, Zeitzone und 6/8 Kanäle prüfen (maximal vier Lampen).");return;}
+    if(index<0)index=count();if(index>count()||index>=MAX_LAMPS||!validFixture(msg.as<JsonVariant>())){fail("Bitte Name, IP, Seriennummer, Zeitzone und 6/8 Kanäle prüfen (maximal zwölf Lampen).");return;}
     DynamicJsonDocument next(65536);next.set(workspace);JsonObject lamp;
     if(index==count()){lamp=next["lamps"].createNestedObject();fallbackPoints(lamp);}else lamp=next["lamps"][index].as<JsonObject>();
     String oldSerial=lamp["serial"]|"";
@@ -617,11 +620,11 @@ void setup() {
   server.onNotFound([]{if(server.uri().startsWith("/api/")){fail("Schnittstelle nicht gefunden",404);return;}if(WiFi.softAPgetStationNum())portal();else fail("Nicht gefunden",404);});server.begin();
 }
 void loop() {
-  dnsServer.processNextRequest();server.handleClient();
+  if(dnsActive)dnsServer.processNextRequest();server.handleClient();
   if(otaRestartAt&&expired(otaRestartAt)){delay(50);ESP.restart();}
-  if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
+  if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
   if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");}
-  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");if(!provisioningAp){dnsServer.stop();WiFi.softAPdisconnect(true);}started=true;}
+  if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");if(!provisioningAp){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);}started=true;}
     // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
     // between fixtures; each fixture has independent mode, timers and clock.
     static int cursor=0;for(int n=0;n<count();n++){int i=(cursor+n)%count();expire(i);if(lamps[i].force||millis()-lamps[i].lastOutput>=30000){lamps[i].force=false;lamps[i].lastOutput=millis();output(i);cursor=(i+1)%count();break;}}

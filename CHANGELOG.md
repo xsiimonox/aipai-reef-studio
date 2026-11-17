@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.2] - 2026-11-17
+
+### Fixed
+
+- Das Verschieben eines Kanal- oder Gesamtintensitätsreglers sendet die Live-Vorschau weiter, sperrt aber nicht mehr die gesamte Oberfläche mit der Übertragungsanimation. Während ein Vorschau-Befehl läuft, wird nur der zuletzt eingestellte Wert nachgereicht.
+
 ## [0.28.1] - 2026-11-16
 
 ### Added

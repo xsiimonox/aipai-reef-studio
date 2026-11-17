@@ -1,5 +1,12 @@
 # Reef Bridge Changelog
 
+## [0.12.0] - 2026-11-17
+
+- DNS-Anfragen werden nur verarbeitet, während das Bridge-Setup-Netz aktiv ist. Das beendet die fortlaufende ESP32-Meldung `WiFiUdp.cpp ... parsePacket(): could not receive data: 9` nach der Heim-WLAN-Einrichtung.
+- Die Bridge verwaltet bis zu zwölf Lampen statt bisher vier; für reaktionsschnelle Gruppen-Vorschauen sind bis zu acht Lampen pro Bridge empfohlen. Eine Skalierungsanleitung für 30+ Lampen ist dokumentiert.
+- Live-Vorschauen aus AiPai Studio bleiben sichtbar und bedienbar, ohne die globale Ladeanimation auszulösen. Bei schnellem Ziehen sendet die Oberfläche nur aktuelle, entprellte Werte.
+- Bei einer großen Lampeninstallation enthält der Status- und Diagnoseabruf die letzten acht Ereignisse je Lampe statt 32, damit Weboberfläche und ESP32-Speicher bei zwölf Geräten stabil bleiben.
+
 ## [0.11.0] - 2026-11-16
 
 - Automatische Update-Prüfung bei jedem Öffnen des Webinterfaces sowie ein manueller „Updates prüfen“-Button.
