@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.14.0] - 2026-11-17
+
+- Der Browser-Flasher enthält jetzt **Configure Wi-Fi**: Nach dem Flashen werden 2,4-GHz-SSID und Passwort über die ausgewählte USB-Seriell-Verbindung direkt in der Bridge gespeichert. Die Zugangsdaten werden hexadezimal kodiert über USB übertragen, nicht auf der Installer-Seite gespeichert oder in eine URL geschrieben. Danach verbindet sich die Bridge selbstständig mit dem Heimnetz.
+
 ## [0.13.0] - 2026-11-17
 
 - Die Bridge kündigt den lokalen mDNS-Dienst `_aipai-reefbridge._tcp` mit stabiler Gerätekennung und Firmwareversion an. AiPai Studio in Home Assistant kann sie dadurch automatisch entdecken und mit einem Webinterface-Link als Gerät anlegen.

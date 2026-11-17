@@ -97,6 +97,24 @@ void startSetupAp(bool provisioning=false) {
   WiFi.softAP(apSsid.c_str(),apPassword.c_str());dnsServer.start(53,"*",setupIp);dnsActive=true;
   provisioningAp=provisioning;if(provisioning)provisioningApStop=millis()+10UL*60*1000;
 }
+bool decodeHex(const String& encoded,String& decoded) {
+  if(encoded.length()%2)return false;decoded="";
+  for(size_t i=0;i<encoded.length();i+=2){
+    char a=encoded[i],b=encoded[i+1];int high=isxdigit((unsigned char)a)?(isdigit((unsigned char)a)?a-'0':tolower((unsigned char)a)-'a'+10):-1;
+    int low=isxdigit((unsigned char)b)?(isdigit((unsigned char)b)?b-'0':tolower((unsigned char)b)-'a'+10):-1;
+    if(high<0||low<0)return false;decoded+=char((high<<4)|low);
+  }return true;
+}
+void serialCommand(String command) {
+  command.trim();
+  if(command=="INFO"){Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");return;}
+  if(!command.startsWith("WIFI ")){Serial.println("ERR Unbekannter Befehl");return;}
+  int separator=command.indexOf(' ',5);String ssid,password;
+  if(separator<0||!decodeHex(command.substring(5,separator),ssid)||!decodeHex(command.substring(separator+1),password)||!ssid.length()||ssid.length()>32||password.length()>63){Serial.println("ERR WLAN-Daten ungültig");return;}
+  prefs.putString("ssid",ssid);prefs.putString("wifi_pass",password);
+  WiFi.disconnect(false,false);WiFi.begin(ssid.c_str(),password.c_str());
+  Serial.println("OK WIFI gespeichert; Verbindung wird hergestellt");
+}
 bool body(JsonDocument& doc) {
   if(server.arg("plain").length()>48000 || deserializeJson(doc,server.arg("plain"))){fail("Ungültige oder zu große Daten.");return false;}return true;
 }
@@ -624,7 +642,7 @@ void loop() {
   if(dnsActive)dnsServer.processNextRequest();server.handleClient();
   if(otaRestartAt&&expired(otaRestartAt)){delay(50);ESP.restart();}
   if(provisioningAp&&provisioningApStop&&expired(provisioningApStop)){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);provisioningAp=false;provisioningApStop=0;}
-  if(Serial.available()){String command=Serial.readStringUntil('\n');command.trim();if(command=="INFO")Serial.println("AP password: "+apPassword+"\nHome IP: "+WiFi.localIP().toString()+"\nSetup IP: 192.168.8.1");}
+  if(Serial.available())serialCommand(Serial.readStringUntil('\n'));
   if(WiFi.status()==WL_CONNECTED){static bool started=false;if(!started){MDNS.begin("reefbridge");MDNS.addService("aipai-reefbridge","tcp",80);MDNS.addServiceTxt("aipai-reefbridge","tcp","id",bridgeId);MDNS.addServiceTxt("aipai-reefbridge","tcp","version",BRIDGE_VERSION);if(!provisioningAp){dnsServer.stop();dnsActive=false;WiFi.softAPdisconnect(true);}started=true;}
     // Round-robin: one lamp transaction per loop keeps HTTP/DNS responsive
     // between fixtures; each fixture has independent mode, timers and clock.

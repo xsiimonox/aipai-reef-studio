@@ -42,11 +42,12 @@ Klassischer **ESP32-WROOM-32 / ESP32 DevKit (esp32dev), mindestens 4 MB Flash**.
 
 1. [Browser-Installer](https://xsiimonox.github.io/aipai-reef-studio/) in Chrome oder Edge auf Windows/macOS öffnen und den ESP32 mit einem USB-Datenkabel verbinden. Safari/Firefox unterstützen Web Serial nicht. Bei Bedarf CP210x-/CH340-Treiber installieren und BOOT beim Verbinden gedrückt halten.
 2. Firmware installieren. Vor einem Update Backup herunterladen und **„Erase device“ nicht aktivieren**; der Browser-Installer erhält dann WLAN und AiPai-Studio-Daten. „Erase device“ nur für eine vollständige Neuinstallation verwenden.
-3. Mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
-4. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.8.1** aufrufen. Kein API-Token nötig.
-5. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Im Router meldet sich der Controller mit dem Hostnamen **ReefBridge**; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
-6. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
-7. Tagesprogramm grafisch erstellen, speichern und mit „Auf Lampe speichern & aktivieren“ für eine Lampe oder Gruppe übertragen. Dafür benötigt die Bridge einmalig eine gültige Netzwerkzeit. Vor Betrieb die Stundenkurve und gewünschten Kanalwerte prüfen.
+3. Optional im Browser-Flasher **Configure Wi-Fi** wählen, die 2,4-GHz-SSID samt Passwort eingeben und denselben ESP32-USB-Port auswählen. Die Daten gehen ausschließlich über die serielle USB-Verbindung an die Bridge; sie speichert sie lokal und verbindet sich selbstständig. Das Passwort wird nach dem Senden aus dem Formular entfernt. Anschließend `http://reefbridge.local` oder die Router-IP öffnen.
+4. Alternativ mit `ReefBridge-…` verbinden. Bei neuer Installation lautet das WLAN-Passwort `ReefBridge2026!`. Frühere Installationen behalten ihr Passwort; in der USB-Konsole bei 115200 Baud `INFO` senden, um es und die IP zu sehen.
+5. Das Captive Portal öffnet normalerweise direkt. Andernfalls **http://192.168.8.1** aufrufen. Kein API-Token nötig.
+6. Unter „Einrichtung“ das Heim-WLAN speichern. Nach Verbindung endet das Setup-WLAN. Im Router meldet sich der Controller mit dem Hostnamen **ReefBridge**; alternativ funktioniert im Heimnetz auf unterstützten Clients `http://reefbridge.local`.
+7. Lampen unter „Einrichtung“ hinzufügen: IP, Seriennummer, Name, Kanalprofil und Zeitzone. Feste DHCP-Zuordnungen im Router verwenden. Europa/Berlin ist inklusive Sommerzeit als POSIX-Zeitzone vorbelegt.
+8. Tagesprogramm grafisch erstellen, speichern und mit „Auf Lampe speichern & aktivieren“ für eine Lampe oder Gruppe übertragen. Dafür benötigt die Bridge einmalig eine gültige Netzwerkzeit. Vor Betrieb die Stundenkurve und gewünschten Kanalwerte prüfen.
 
 ### Fabrikneue Lampe ohne Hersteller-App übernehmen
 
