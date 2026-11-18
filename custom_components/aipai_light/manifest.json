@@ -21,6 +21,6 @@
   "requirements": [
     "paho-mqtt>=1.6.1"
   ],
-  "version": "0.28.3",
+  "version": "0.28.4",
   "zeroconf": ["_aipai-reefbridge._tcp.local."]
 }

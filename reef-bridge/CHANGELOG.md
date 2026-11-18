@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.14.1] - 2026-11-18
+
+- Gemeinsame AiPai-Studio-Reparatur 0.28.4: Der Reef-Bridge-Geräteimport verwendet die aktuelle Home-Assistant-Geräteregistry-Schnittstelle. Bestehende Lampen werden dadurch nicht mehr beim Laden der Sensorplattform blockiert.
+
 ## [0.14.0] - 2026-11-17
 
 - Der Browser-Flasher enthält jetzt **Configure Wi-Fi**: Nach dem Flashen werden 2,4-GHz-SSID und Passwort über die ausgewählte USB-Seriell-Verbindung direkt in der Bridge gespeichert. Die Zugangsdaten werden hexadezimal kodiert über USB übertragen, nicht auf der Installer-Seite gespeichert oder in eine URL geschrieben. Danach verbindet sich die Bridge selbstständig mit dem Heimnetz.

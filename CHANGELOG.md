@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.4] - 2026-11-18
+
+### Fixed
+
+- Repariert den Import der Reef-Bridge-Ergänzung auf aktuellen Home-Assistant-Versionen. Dadurch laden vorhandene AIPAI-Lampeneinträge wieder gemeinsam statt mit „Einrichtungsfehler: Import error“ fehlzuschlagen.
+
 ## [0.28.3] - 2026-11-17
 
 ### Added
