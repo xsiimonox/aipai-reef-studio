@@ -3,6 +3,7 @@
 ## [0.14.1] - 2026-11-18
 
 - Gemeinsame AiPai-Studio-Reparatur 0.28.4: Der Reef-Bridge-Geräteimport verwendet die aktuelle Home-Assistant-Geräteregistry-Schnittstelle. Bestehende Lampen werden dadurch nicht mehr beim Laden der Sensorplattform blockiert.
+- **Configure Wi-Fi** im Browser-Flasher meldet Erfolg erst nach der seriellen `OK WIFI`-Bestätigung der Bridge. Ein falscher USB-Port, eine getrennte Verbindung oder abgelehnte Daten werden nun als Fehler angezeigt.
 
 ## [0.14.0] - 2026-11-17
 
