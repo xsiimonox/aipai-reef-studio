@@ -19,7 +19,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.components.zeroconf import ZeroconfServiceInfo
 
 from homeassistant.helpers import config_validation as cv
 
@@ -76,9 +75,7 @@ class AipaiLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._found: list[FoundLight] = []
         self._bridge: dict[str, str] | None = None
 
-    async def async_step_zeroconf(
-        self, discovery_info: ZeroconfServiceInfo
-    ) -> FlowResult:
+    async def async_step_zeroconf(self, discovery_info: Any) -> FlowResult:
         """Offer a locally announced Reef Bridge without scanning a subnet."""
         properties = discovery_info.properties
         raw_id = properties.get("id", "")

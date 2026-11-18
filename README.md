@@ -24,7 +24,7 @@ Lampen direkt im lokalen Netzwerk über ihre HTTP-Schnittstelle.
 
 **[AIPAI Reef Bridge für ESP32](reef-bridge/README.md)** – experimentelle Standalone-Firmware mit demselben AiPai-Studio-Editor, Bibliotheken und Gruppen für bis zu zwölf Lampen (für schnelle Gruppen-Vorschauen bis acht empfohlen). Für 30+ Lampen werden mehrere Bridges empfohlen. USB-/Browser-Installer für macOS und Windows sowie optionale Home-Assistant-Anbindung mit lokalem Fallback. Beide Varianten verwenden eine gemeinsame Oberfläche; CI prüft zusammengehörige Versionen. Bibliotheksdaten zwischen HA und Bridge werden nicht automatisch abgeglichen.
 
-Reef Bridge 0.14.1 wird von AiPai Studio 0.28.4 im selben Netz automatisch erkannt und als Home-Assistant-Gerät inklusive Direktlink zum Bridge-Webinterface angeboten.
+Reef Bridge 0.14.2 wird von AiPai Studio 0.28.5 im selben Netz automatisch erkannt und als Home-Assistant-Gerät inklusive Direktlink zum Bridge-Webinterface angeboten.
 
 Eine konkrete Planung für 1–36 Lampen steht unter [Reef Bridge: Größe und Skalierung](docs/reef-bridge-scaling.md).
 

@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen dieses Projekts werden hier dokumentiert.
 
+## [0.28.5] - 2026-11-18
+
+### Fixed
+
+- Der Konfigurationsfluss lädt wieder auf Home-Assistant-Versionen, die die optionale Zeroconf-Typklasse noch nicht bereitstellen. Dadurch verschwindet „Der Konfigurationsfluss konnte nicht geladen werden: Invalid handler specified“; die automatische Reef-Bridge-Erkennung bleibt erhalten.
+
 ## [0.28.4] - 2026-11-18
 
 ### Fixed

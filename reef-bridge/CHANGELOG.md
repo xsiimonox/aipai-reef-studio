@@ -1,5 +1,9 @@
 # Reef Bridge Changelog
 
+## [0.14.2] - 2026-11-18
+
+- Kompatibilität mit AiPai Studio 0.28.5: Die automatische Home-Assistant-Erkennung verwendet keine versionsabhängige Zeroconf-Typklasse mehr.
+
 ## [0.14.1] - 2026-11-18
 
 - Gemeinsame AiPai-Studio-Reparatur 0.28.4: Der Reef-Bridge-Geräteimport verwendet die aktuelle Home-Assistant-Geräteregistry-Schnittstelle. Bestehende Lampen werden dadurch nicht mehr beim Laden der Sensorplattform blockiert.
